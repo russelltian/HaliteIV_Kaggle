@@ -109,18 +109,22 @@ def worker(queue, size):
 
 
 # 5 queues, 1 for each map size (to improve compute efficiency)
-queue = Queue(32)
+queues = [Queue(32)]
+queue_m_sizes = [32]
 
 batch_size = 2
+
+processes = [Thread(target=worker, args=(queues[ix], queue_m_sizes[ix])) for ix in range(1)]
+[p.start() for p in processes]
 
 build_model()
 
 frames_node = tf.get_collection('frames')[0]
-can_afford_node = tf.get_collection('can_afford')[0]
-turns_left_node = tf.get_collection('turns_left')[0]
-my_ships_node = tf.get_collection('my_ships')[0]
+# can_afford_node = tf.get_collection('can_afford')[0]
+# turns_left_node = tf.get_collection('turns_left')[0]
+# my_ships_node = tf.get_collection('my_ships')[0]
 moves_node = tf.get_collection('moves')[0]
-generate_node = tf.get_collection('generate')[0]
+# generate_node = tf.get_collection('generate')[0]
 loss_node = tf.get_collection('loss')[0]
 optimizer_node = tf.get_collection('optimizer')[0]
 
@@ -130,36 +134,41 @@ with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
     for step in range(200):
-        f_batch, m_batch, g_batch, c_batch, t_batch, s_batch = [], [], [], [], [], []
+        f_batch, m_batch = [], [], [], [], [], []
         print(step)
         for i in range(batch_size):
-            frame, move, generate, can_afford, turns_left, my_ships = queue.get()
+            queue = queues[0]
+            frame, move = queue.get()
             f_batch.append(frame)
             m_batch.append(move)
-            g_batch.append(generate)
-            c_batch.append(can_afford)
-            t_batch.append(turns_left)
-            s_batch.append(my_ships)
+            # g_batch.append(generate)
+            # c_batch.append(can_afford)
+            # t_batch.append(turns_left)
+            # s_batch.append(my_ships)
         f_batch = np.stack(f_batch)
         m_batch = np.stack(m_batch)
-        g_batch = np.stack(g_batch)
-        c_batch = np.stack(c_batch)
-        t_batch = np.stack(t_batch)
-        s_batch = np.stack(s_batch)
+        # g_batch = np.stack(g_batch)
+        # c_batch = np.stack(c_batch)
+        # t_batch = np.stack(t_batch)
+        # s_batch = np.stack(s_batch)
 
-        g_batch = np.expand_dims(g_batch, -1)
-        t_batch = np.expand_dims(t_batch, -1)
+        # g_batch = np.expand_dims(g_batch, -1)
+        # t_batch = np.expand_dims(t_batch, -1)
         m_batch = np.expand_dims(m_batch, -1)
-        s_batch = np.expand_dims(s_batch, -1)
+        # s_batch = np.expand_dims(s_batch, -1)
 
-        print([x.shape for x in [f_batch, m_batch, g_batch, c_batch, t_batch, s_batch]])
+        print([x.shape for x in [f_batch, m_batch]])
+
+        # feed_dict = {frames_node: f_batch,
+        #              can_afford_node: c_batch,
+        #              turns_left_node: t_batch,
+        #              my_ships_node: s_batch,
+        #              moves_node: m_batch,
+        #              generate_node: g_batch,
+        #              }
 
         feed_dict = {frames_node: f_batch,
-                     can_afford_node: c_batch,
-                     turns_left_node: t_batch,
-                     my_ships_node: s_batch,
                      moves_node: m_batch,
-                     generate_node: g_batch,
                      }
 
         for i in range(100000):
