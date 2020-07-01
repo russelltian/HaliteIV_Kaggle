@@ -26,12 +26,17 @@ def load_replay(path: str):
         total_steps = len(replay["steps"])
         valid_moves = ["NORTH", "EAST", "SOUTH", "WEST"]
         player0 = []
+        train_halite = []
+        temp = []
         # Iterate through each step of the game to get frame based information
         for step, content in enumerate(replay["steps"]):
-            step_move = np.zeros((map_size, map_size, num_players))
-            player0_ship = np.zeros((map_size,map_size))
             # Get board observation
             observation = content[0]["observation"]
+
+            # Declare processing information
+            step_move = np.zeros((map_size, map_size, num_players))
+            player0_ship = np.zeros((map_size,map_size))
+          #  player0_halite = np.array()
 
             # Load ship moves for all active players
             for pid in range(len(content)):
@@ -42,8 +47,7 @@ def load_replay(path: str):
                 #for object_id, move in content[pid]["action"].items():
                     #print(object_id, move)
 
-                # view of whole board at this step
-                # load player 0's ship location
+                # load player 0's information
                 if player_id == 0:
                     player_observation = observation["players"][player_id]
                     # Get halite, shipyard, ship information of the player
@@ -58,8 +62,10 @@ def load_replay(path: str):
                         ship_halite = ship_info[1]
                         ship_pos_2d = geometry.get_2D_col_row(map_size,ship_pos_1d)
                         player0_ship[ship_pos_2d[0]][ship_pos_2d[1]] = 1
+                        temp = player0_ship
                     player0 = np.append(player0,player0_ship)
-            print(player0.shape)
+
+
             # load halite energy
             raw_energy_grid = observation["halite"]
             oneframe = []
@@ -70,13 +76,35 @@ def load_replay(path: str):
                     onerow.append(raw_energy_grid[j])
                 oneframe.append(onerow)
             oneframe = np.array(oneframe)
-            #print(oneframe)
-        player0 = player0.reshape((map_size,map_size,total_steps))
-        print(player0.shape)
-        return player0
-    load_moves()
+            train_halite.append(oneframe)
+            # Load training features
 
+
+
+
+        player0 = player0.reshape((map_size,map_size,total_steps))
+        train_halite = np.array(train_halite)
+       # print(player0.shape)
+        #return player0#, train_halite
+        return temp
 
     #print(replay["steps"][-1])
+    def training_data_prep():
+        train_data = load_moves()
+        dim = 32
 
-load_replay("1208740.json")
+       # train_data = np.concatenate([train_data, train_data, train_data], axis=1)
+       # train_data = np.concatenate([train_data, train_data, train_data], axis=2)
+        print(train_data.shape)
+        train_data_real = np.zeros((32,32,1))
+        if train_data.shape[1] != dim:
+            pad_y1 = (dim - train_data.shape[1])//2
+            pad_y2 = (dim - train_data.shape[1]) - pad_y1
+            print(pad_y1, pad_y2)
+            #train_data = np.concatenate([train_data[:, -pad_y1:], train_data, train_data[:, :pad_y2]], axis=1)
+            train_data_real[:train_data.shape[0],:train_data.shape[1],0] = train_data
+
+        return train_data_real
+    return training_data_prep()
+data = load_replay("1208740.json")
+print(data.shape)
