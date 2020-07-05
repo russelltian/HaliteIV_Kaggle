@@ -1,7 +1,7 @@
 import pickle
 import gzip
 import time
-from random import shuffle
+import random
 # from multiprocessing import Process, Queue
 
 from threading import Thread
@@ -85,11 +85,13 @@ def worker(queue, size):
         path = "./train/1208740.json"
         #day = which_game.replace('ts2018-halite-3-gold-replays_replay-', '').split('-')[0]
 
-        # game = Game()
+        game = utils.Halite()
+
         try:
-            frames = utils.load_replay(path)
+            game.load_replay(path)
+            game.load_data()
+            game.get_training_data()
             moves = np.zeros((32,32,1))
-            print(frames.shape, moves.shape)
         except:
             continue
 
@@ -101,7 +103,7 @@ def worker(queue, size):
         #        can_afford = can_afford[:25]
         #        turns_left = turns_left[:25]
 
-        for pair in zip(frames,moves):#, moves, generate, can_afford, turns_left, my_ships):
+        for pair in zip('frames',moves):#, moves, generate, can_afford, turns_left, my_ships):
             buffer.append(pair)
 
         if len(buffer) > 10:
@@ -112,14 +114,21 @@ def worker(queue, size):
         print(buffer)
 
 
-# 5 queues, 1 for each map size (to improve compute efficiency)
-queues = [Queue(32)]
+queue = [Queue(32)]
 queue_m_sizes = [32]
 
 batch_size = 2
 
-processes = [Thread(target=worker, args=(queues[ix], queue_m_sizes[ix])) for ix in range(1)]
-[p.start() for p in processes]
+#processes = [Thread(target=worker, args=(queues[ix], queue_m_sizes[ix])) for ix in range(1)]
+#[p.start() for p in processes]
+game = utils.Halite()
+path = "./train/1208740.json"
+game.load_replay(path)
+game.load_data()
+X,Y = game.get_training_data()
+print(type(X))
+print(Y.shape)
+#exit(0)
 
 build_model()
 
@@ -140,14 +149,13 @@ with tf.Session() as sess:
     for step in range(10):
         f_batch, m_batch = [], []
         print(step)
+        total_size = X.shape[0]
         for i in range(batch_size):
-            queue = queues[0]
-          #  frame, move = queue.get()
-            frame = utils.load_replay("./train/1208740.json")
-            frame = np.reshape(frame,(32,32))
-            move = np.zeros((32,32))
+            rand_num = random.randint(0, total_size-1)
+            frame, move = X[rand_num], Y[rand_num]
             f_batch.append(frame)
             m_batch.append(move)
+            print(frame.shape)
             # g_batch.append(generate)
             # c_batch.append(can_afford)
             # t_batch.append(turns_left)

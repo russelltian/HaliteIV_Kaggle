@@ -241,20 +241,25 @@ class Halite(object):
         :param dim: the training data has the shape of [ None, dim, dim]
         :return:
         """
-        #
-        #         # train_data = np.concatenate([train_data, train_data, train_data], axis=1)
-        #         # train_data = np.concatenate([train_data, train_data, train_data], axis=2)
-        #         # print(train_data.shape)
-        #         train_data_real = np.zeros((32, 32, 1))
-        #         if train_data.shape[1] != dim:
-        #             # print(pad_y1, pad_y2)
-        #             # train_data = np.concatenate([train_data[:, -pad_y1:], train_data, train_data[:, :pad_y2]], axis=1)
-        #             train_data_real[:train_data.shape[0], :train_data.shape[1], 0] = train_data
-        #
-        #         return train_data_real
+        assert(self.replay is not None and self.halite is not None)
+        #print(self.halite.shape)
+        #print(self.ship_actions.shape)
+        assert(self.halite.shape[0] == self.ship_actions.shape[0])
+        step = self.halite.shape[0]
+        shape = self.halite.shape[1]
+        train_x = np.zeros((step, dim, dim))
+        train_y = np.zeros((step, dim, dim))
 
+        # add padding
+        if shape != dim:
+            pad_offset = (dim - self.halite.shape[1]) // 2
+            train_x[:, pad_offset:pad_offset + shape, pad_offset:pad_offset+ shape] = self.halite
+            train_y[:, pad_offset:pad_offset + shape, pad_offset:pad_offset + shape] = self.ship_actions
+            return train_x, train_y
+        return self.halite.copy(),self.ship_actions.copy()
 
-game = Halite()
-game.load_replay("1208740.json")
+#game = Halite()
+#game.load_replay("1208740.json")
 # game.load_halite(21)
-game.load_data()
+#game.load_data()
+#game.get_training_data()
