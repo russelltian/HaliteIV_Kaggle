@@ -1,7 +1,7 @@
 import pickle
 import gzip
 import time
-from random import shuffle
+import random
 # from multiprocessing import Process, Queue
 
 from threading import Thread
@@ -10,7 +10,9 @@ from queue import Queue
 import numpy as np
 import tensorflow._api.v2.compat.v1 as tf
 
-from core.data_utils import Game
+from train import utils
+import os
+#from core.data_utils import Game
 
 from architecture import build_model
 
@@ -43,15 +45,15 @@ from architecture import build_model
 #
 # print(master_index.keys())
 
-with gzip.open('/Users/Peace/Desktop/replays/INDEX.pkl', 'rb') as infile:
-    master_index = pickle.load(infile)
-
-keep = []
-for rp in master_index:
-    for p in master_index[rp]['players']:
-        if 'Rachol' == p['name'].split(' ')[0]:
-            keep.append(rp)
-            break
+# with gzip.open('/Users/Peace/Desktop/replays/INDEX.pkl', 'rb') as infile:
+#     master_index = pickle.load(infile)
+#
+# keep = []
+# for rp in master_index:
+#     for p in master_index[rp]['players']:
+#         if 'Rachol' == p['name'].split(' ')[0]:
+#             keep.append(rp)
+#             break
 
 
 # Test speed before MP
@@ -75,22 +77,25 @@ def worker(queue, size):
     np.random.seed(size)  # Use size as seed
     # Filter out games that are not the right size
     # Note: Replay naming is not consistent (game id was added later)
-    s_keep = [x for x in keep if int(x.split('-')[-2]) == size]
-    print("{0} maps with size {1}x{1}".format(len(s_keep), size))
+    # s_keep = [x for x in keep if int(x.split('-')[-2]) == size]
+    # print("{0} maps with size {1}x{1}".format(len(s_keep), size))
     buffer = []
     while True:
-        which_game = np.random.choice(s_keep)
-        path = '/Users/Peace/Desktop/replays/{}/{}'
-        day = which_game.replace('ts2018-halite-3-gold-replays_replay-', '').split('-')[0]
-        path = path.format(day, which_game)
 
-        game = Game()
+        path = "./train/1208740.json"
+        #day = which_game.replace('ts2018-halite-3-gold-replays_replay-', '').split('-')[0]
+
+        game = utils.Halite()
+
         try:
             game.load_replay(path)
+            game.load_data()
+            game.get_training_data()
+            moves = np.zeros((32,32,1))
         except:
             continue
 
-        frames, moves, generate, can_afford, turns_left, my_ships = game.get_training_frames(pname='Rachol')
+        #frames, moves, generate, can_afford, turns_left, my_ships = game.get_training_frames(pname='Rachol')
 
         #        frames = frames[:25]
         #        moves = moves[:25]
@@ -98,7 +103,7 @@ def worker(queue, size):
         #        can_afford = can_afford[:25]
         #        turns_left = turns_left[:25]
 
-        for pair in zip(frames, moves, generate, can_afford, turns_left, my_ships):
+        for pair in zip('frames',moves):#, moves, generate, can_afford, turns_left, my_ships):
             buffer.append(pair)
 
         if len(buffer) > 10:
@@ -106,16 +111,24 @@ def worker(queue, size):
             while len(buffer) > 0:
                 queue.put(buffer.pop())
         # queue.put(size)
+        print(buffer)
 
 
-# 5 queues, 1 for each map size (to improve compute efficiency)
-queues = [Queue(32)]
+queue = [Queue(32)]
 queue_m_sizes = [32]
 
 batch_size = 2
 
-processes = [Thread(target=worker, args=(queues[ix], queue_m_sizes[ix])) for ix in range(1)]
-[p.start() for p in processes]
+#processes = [Thread(target=worker, args=(queues[ix], queue_m_sizes[ix])) for ix in range(1)]
+#[p.start() for p in processes]
+game = utils.Halite()
+path = "./train/1208740.json"
+game.load_replay(path)
+game.load_data()
+X,Y = game.get_training_data()
+print(type(X))
+print(Y.shape)
+#exit(0)
 
 build_model()
 
@@ -133,20 +146,23 @@ saver = tf.train.Saver()
 with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
-    for step in range(200):
-        f_batch, m_batch = [], [], [], [], [], []
+    for step in range(10):
+        f_batch, m_batch = [], []
         print(step)
+        total_size = X.shape[0]
         for i in range(batch_size):
-            queue = queues[0]
-            frame, move = queue.get()
+            rand_num = random.randint(0, total_size-1)
+            frame, move = X[rand_num], Y[rand_num]
             f_batch.append(frame)
             m_batch.append(move)
+            print(frame.shape)
             # g_batch.append(generate)
             # c_batch.append(can_afford)
             # t_batch.append(turns_left)
             # s_batch.append(my_ships)
         f_batch = np.stack(f_batch)
         m_batch = np.stack(m_batch)
+        print(f_batch.shape,m_batch.shape)
         # g_batch = np.stack(g_batch)
         # c_batch = np.stack(c_batch)
         # t_batch = np.stack(t_batch)
@@ -155,6 +171,7 @@ with tf.Session() as sess:
         # g_batch = np.expand_dims(g_batch, -1)
         # t_batch = np.expand_dims(t_batch, -1)
         m_batch = np.expand_dims(m_batch, -1)
+        f_batch = np.expand_dims(f_batch, -1)
         # s_batch = np.expand_dims(s_batch, -1)
 
         print([x.shape for x in [f_batch, m_batch]])
@@ -171,9 +188,10 @@ with tf.Session() as sess:
                      moves_node: m_batch,
                      }
 
-        for i in range(100000):
+        for i in range(100):
             loss, _ = sess.run([loss_node, optimizer_node], feed_dict=feed_dict)
             print(loss)
+    saver.save(sess, os.path.join("./", 'model_{}.ckpt'.format(step)))
 
         # val = queue.get()
         # print(val)
