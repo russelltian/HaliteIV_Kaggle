@@ -73,6 +73,7 @@ def build_model():
     u_l1_s = tf.layers.conv2d(u_l1_c, size, 3, activation=tf.nn.relu, padding='same')
 
     moves_logits = tf.layers.conv2d(u_l1_s, 6, 3, activation=None, padding='same')
+    tf.add_to_collection('m_logits', moves_logits)
 
     tf.add_to_collection('m_logits', moves_logits)
 

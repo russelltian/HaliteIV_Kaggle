@@ -1,9 +1,11 @@
 import numpy as np
 import tensorflow._api.v2.compat.v1 as tf
+
 tf.compat.v1.disable_eager_execution()
 
 from kaggle_environments import make
 from kaggle_environments.envs.halite.helpers import *
+
 
 class Gameplay(object):
     def __init__(self, obs, config):
@@ -16,10 +18,11 @@ class Gameplay(object):
         self.board = Board(obs, config)
         self.me = self.board.current_player
         self.model = self.load_model()
-        
+
     def print_board(self):
         board = self.board
         print(board)
+
     # Converts position from 1D to 2D representation in (left most col, left most row)
     def get_col_row(self, size: int, pos: int):
         return pos % size, pos // size
@@ -51,19 +54,20 @@ class Gameplay(object):
         """
         Convert the target position from coordinate with bottom left point as origin to
         coordinate where the top left point is the origin
-        :param size: 
+        :param size:
         :param pos:
         :return:
         """
-        assert(len(pos) == 2)
+        assert (len(pos) == 2)
         row = size - 1 - pos[1]
         col = pos[0]
-        assert(0 <= row < size)
-        assert(0 <= col < size)
+        assert (0 <= row < size)
+        assert (0 <= col < size)
         return row, col
 
     def get_training_data(self, dim=32):
         return
+
     def load_model(self):
         sess = tf.Session()
         saver = tf.train.import_meta_graph('model_9.ckpt.meta')
@@ -72,30 +76,18 @@ class Gameplay(object):
         # Get tensorflow training graph
         return sess, saver
 
-
-
-
-
-
     def agent(self, obs, config):
         """Central function for an agent.
-
             Relevant properties of arguments:
-
             obs:
                 halite: a one-dimensional list of the amount of halite in each board space
-
                 player: integer, player id, generally 0 or 1
-
                 players: a list of players, where each is:
                     [halite, { 'shipyard_uid': position }, { 'ship_uid': [position, halite] }]
-
                 step: which turn we are on (counting up)
-
             Should return a dictionary where the key is the unique identifier string of a ship/shipyard
             and action is one of "CONVERT", "SPAWN", "NORTH", "SOUTH", "EAST", "WEST"
             ("SPAWN" being only applicable to shipyards and the others only to ships).
-
         """
         this_turn = Gameplay(obs, config)
         this_turn.print_board()
@@ -106,14 +98,14 @@ class Gameplay(object):
         for i in range(size):
             for j in range(size):
                 halite_map[i][j] = this_turn.obs.halite[i * size + j]
-        
+
         print(halite_map)
         for ship in current_player.ships:
             position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
-            ship_map[position[0]][position[1]] = 1 
+            ship_map[position[0]][position[1]] = 1
         actions = {}
         sess, saver = self.load_model()
-        #print([n.name for n in tf.get_default_graph().as_graph_def().node])
+        # print([n.name for n in tf.get_default_graph().as_graph_def().node])
         frame_node = tf.get_default_graph().get_collection('frames')[0]
         loss_node = tf.get_default_graph().get_collection('loss')[0]
         train_x = np.zeros((32, 32))
@@ -123,15 +115,15 @@ class Gameplay(object):
         halite_map = np.array(halite_map)
         pad_offset = (32 - size) // 2
         print(halite_map.shape)
-        moves_node = tf.get_default_graph().get_collection('moves')[0]
+        moves_node = tf.get_default_graph().get_collection('m_logits')[0]
         train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size] = halite_map
         X = []
         temp = np.expand_dims(train_x, -1)
         X.append(temp)
         X = np.array(X)
-        feed_dict = {frame_node: X,moves_node:X}
+        feed_dict = {frame_node: X}
         print(X.shape)
         moves = sess.run([moves_node], feed_dict)
         moves = np.array(moves).squeeze(axis=0)
-        print(moves,moves.shape)
+        print(moves, moves.shape)
         return actions
