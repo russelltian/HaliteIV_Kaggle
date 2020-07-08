@@ -3,7 +3,6 @@ import tensorflow._api.v2.compat.v1 as tf
 
 tf.compat.v1.disable_eager_execution()
 
-from kaggle_environments import make
 from kaggle_environments.envs.halite.helpers import *
 
 
@@ -17,7 +16,7 @@ class Gameplay(object):
         self.shipyards = np.zeros((size, size))
         self.board = Board(obs, config)
         self.me = self.board.current_player
-        self.model = self.load_model()
+        # self.model = self.load_model()
 
     def print_board(self):
         board = self.board
@@ -78,16 +77,23 @@ class Gameplay(object):
 
     def agent(self, obs, config):
         """Central function for an agent.
+
             Relevant properties of arguments:
+
             obs:
                 halite: a one-dimensional list of the amount of halite in each board space
+
                 player: integer, player id, generally 0 or 1
+
                 players: a list of players, where each is:
                     [halite, { 'shipyard_uid': position }, { 'ship_uid': [position, halite] }]
+
                 step: which turn we are on (counting up)
+
             Should return a dictionary where the key is the unique identifier string of a ship/shipyard
             and action is one of "CONVERT", "SPAWN", "NORTH", "SOUTH", "EAST", "WEST"
             ("SPAWN" being only applicable to shipyards and the others only to ships).
+
         """
         this_turn = Gameplay(obs, config)
         this_turn.print_board()
@@ -104,26 +110,44 @@ class Gameplay(object):
             position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
             ship_map[position[0]][position[1]] = 1
         actions = {}
-        sess, saver = self.load_model()
-        # print([n.name for n in tf.get_default_graph().as_graph_def().node])
-        frame_node = tf.get_default_graph().get_collection('frames')[0]
-        loss_node = tf.get_default_graph().get_collection('loss')[0]
-        train_x = np.zeros((32, 32))
 
-        # add padding
+        configProto = tf.ConfigProto(allow_soft_placement=False)
+        with tf.Session(config=configProto) as sess:
+            tf.train.import_meta_graph('model_9.ckpt.meta')
+            saver = tf.train.Saver()
+            saver.restore(sess, "model_9.ckpt")
 
-        halite_map = np.array(halite_map)
-        pad_offset = (32 - size) // 2
-        print(halite_map.shape)
-        moves_node = tf.get_default_graph().get_collection('m_logits')[0]
-        train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size] = halite_map
-        X = []
-        temp = np.expand_dims(train_x, -1)
-        X.append(temp)
-        X = np.array(X)
-        feed_dict = {frame_node: X}
-        print(X.shape)
-        moves = sess.run([moves_node], feed_dict)
-        moves = np.array(moves).squeeze(axis=0)
-        print(moves, moves.shape)
-        return actions
+            del saver
+
+            frames_node = tf.get_collection('frames')[0]
+            moves_node = tf.get_collection('m_logits')[0]
+            loss_node = tf.get_collection('loss')[0]
+
+            # sess, saver = self.load_model()
+            # #print([n.name for n in tf.get_default_graph().as_graph_def().node])
+            # frame_node = tf.get_default_graph().get_collection('frames')[0]
+            # loss_node = tf.get_default_graph().get_collection('loss')[0]
+            train_x = np.zeros((32, 32))
+
+            # add padding
+
+            halite_map = np.array(halite_map)
+            pad_offset = (32 - size) // 2
+            print(halite_map.shape)
+            # moves_node = tf.get_default_graph().get_collection('moves')[0]
+            train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size] = halite_map
+            X = []
+            temp = np.expand_dims(train_x, -1)
+            X.append(temp)
+            X = np.array(X)
+            feed_dict = {frames_node: X}
+            print(X.shape)
+            moves = sess.run([moves_node], feed_dict)
+            # moves = np.array(moves).squeeze(axis=0)
+            moves = np.array(moves)
+            print("moves before argmax", moves[0][0][0][0:2])
+            print("moves shape before argmax", moves.shape)
+            moves = np.argmax(moves, -1)
+            print("moves is", moves[0][0][0][0:2])
+            print("moves shape", moves.shape)
+            return actions

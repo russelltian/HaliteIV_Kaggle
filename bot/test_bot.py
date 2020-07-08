@@ -1,11 +1,12 @@
 from kaggle_environments import evaluate, make
 import sys
 from bot import v1_bot
-env = make("halite", configuration={"size": 6, "episodeSteps": 20}, debug=True)
+from bot import t_bot
+env = make("halite", configuration={"size": 6, "episodeSteps": 2}, debug=True)
 trainer = env.train([None, "random"])
 observation = trainer.reset()
 while not env.done:
-    mybot = v1_bot.Gameplay(observation,env.configuration)
+    mybot = t_bot.Gameplay(observation,env.configuration)
     action = mybot.agent(observation, env.configuration)
     print("my action", action)
     observation = trainer.step(action)[0]
