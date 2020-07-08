@@ -1,7 +1,7 @@
 from kaggle_environments import evaluate, make
 import sys
 from bot import v1_bot
-env = make("halite", configuration={"size": 6, "episodeSteps": 20}, debug=True)
+env = make("halite", configuration={"size": 6, "episodeSteps": 2}, debug=True)
 trainer = env.train([None, "random"])
 observation = trainer.reset()
 while not env.done:
