@@ -2,6 +2,7 @@ import pickle
 import gzip
 import time
 import random
+from random import shuffle
 # from multiprocessing import Process, Queue
 
 from threading import Thread
@@ -162,7 +163,7 @@ with tf.Session() as sess:
             # s_batch.append(my_ships)
         f_batch = np.stack(f_batch)
         m_batch = np.stack(m_batch)
-        print(f_batch.shape,m_batch.shape)
+        print(f_batch.shape, m_batch.shape)
         # g_batch = np.stack(g_batch)
         # c_batch = np.stack(c_batch)
         # t_batch = np.stack(t_batch)
