@@ -1,5 +1,5 @@
 # Converts position from 1D to 2D representation in (left most col, left most row)
-def get_col_row(size, pos):
+def get_col_row(size: int, pos: int):
     return pos % size, pos // size
 
 # convert top left coordinate to (left row, left col)
@@ -20,7 +20,7 @@ def test_get_2D_col_row(size = 21):
     assert(get_2D_col_row(size, 413) == (19, 14))
     assert(get_2D_col_row(size, 440) == (20, 20))
 
-def get_to_pos(size, pos, direction):
+def get_to_pos(size: int, pos: int, direction: str):
     col, row = get_col_row(size, pos)
     if direction == "NORTH":
         return pos - size if pos >= size else size ** 2 - size + col
