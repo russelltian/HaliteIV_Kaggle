@@ -147,7 +147,7 @@ saver = tf.train.Saver()
 with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
-    for step in range(10):
+    for step in range(30):
         f_batch, m_batch = [], []
         print(step)
         total_size = X.shape[0]
@@ -172,7 +172,7 @@ with tf.Session() as sess:
         # g_batch = np.expand_dims(g_batch, -1)
         # t_batch = np.expand_dims(t_batch, -1)
         m_batch = np.expand_dims(m_batch, -1)
-        f_batch = np.expand_dims(f_batch, -1)
+        #f_batch = np.expand_dims(f_batch, -1)
         # s_batch = np.expand_dims(s_batch, -1)
 
         print([x.shape for x in [f_batch, m_batch]])
