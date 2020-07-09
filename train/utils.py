@@ -75,6 +75,7 @@ class Halite(object):
         assert (halite.shape[0] == total_step - 1)
         assert (halite.shape[1] == map_size)
         assert (halite.shape[2] == map_size)
+        halite = halite/1000  # round it
         return halite
 
     def load_moves(self, map_size: int, num_of_players: int):
@@ -95,8 +96,8 @@ class Halite(object):
             observation = self.replay["steps"][step - 1][0]["observation"]
             # Declare processing information
             # ship action and shipyard action per step
-            step_ships_action = np.zeros((map_size, map_size))
-            step_shipyard_action = np.zeros((map_size, map_size))
+            step_ships_action = np.zeros((map_size, map_size), np.int32)
+            step_shipyard_action = np.zeros((map_size, map_size), np.int32)
 
             # Load ship moves for all active players
             for pid in range(len(content)):

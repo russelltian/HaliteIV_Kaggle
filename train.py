@@ -83,7 +83,7 @@ def worker(queue, size):
     buffer = []
     while True:
 
-        path = "./train/1208740.json"
+        path = "./train/topGamePlay1066734.json"
         #day = which_game.replace('ts2018-halite-3-gold-replays_replay-', '').split('-')[0]
 
         game = utils.Halite()
@@ -142,12 +142,12 @@ moves_node = tf.get_collection('moves')[0]
 loss_node = tf.get_collection('loss')[0]
 optimizer_node = tf.get_collection('optimizer')[0]
 
-saver = tf.train.Saver()
+saver = tf.train.Saver(max_to_keep=1)
 
 with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
-    for step in range(30):
+    for step in range(10):
         f_batch, m_batch = [], []
         print(step)
         total_size = X.shape[0]
@@ -189,7 +189,7 @@ with tf.Session() as sess:
                      moves_node: m_batch,
                      }
 
-        for i in range(100):
+        for i in range(200):
             loss, _ = sess.run([loss_node, optimizer_node], feed_dict=feed_dict)
             print(loss)
     saver.save(sess, os.path.join("./", 'model_{}.ckpt'.format(step)))
