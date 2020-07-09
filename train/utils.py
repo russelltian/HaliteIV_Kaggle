@@ -95,8 +95,8 @@ class Halite(object):
             observation = self.replay["steps"][step - 1][0]["observation"]
             # Declare processing information
             # ship action and shipyard action per step
-            step_ships_action = np.zeros((map_size, map_size))
-            step_shipyard_action = np.zeros((map_size, map_size))
+            step_ships_action = np.zeros((map_size, map_size), np.int32)
+            step_shipyard_action = np.zeros((map_size, map_size), np.int32)
 
             # Load ship moves for all active players
             for pid in range(len(content)):

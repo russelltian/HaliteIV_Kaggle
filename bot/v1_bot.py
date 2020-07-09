@@ -70,7 +70,7 @@ class Gameplay(object):
 
     def load_model(self):
         sess = tf.Session()
-        saver = tf.train.import_meta_graph('model_9.ckpt.meta')
+        saver = tf.train.import_meta_graph('model_29.ckpt.meta')
         saver.restore(sess, tf.train.latest_checkpoint('./'))
 
         # Get tensorflow training graph
@@ -108,22 +108,27 @@ class Gameplay(object):
         # print([n.name for n in tf.get_default_graph().as_graph_def().node])
         frame_node = tf.get_default_graph().get_collection('frames')[0]
         loss_node = tf.get_default_graph().get_collection('loss')[0]
-        train_x = np.zeros((32, 32))
+        train_x = np.zeros((32, 32,2))
 
         # add padding
 
         halite_map = np.array(halite_map)
+        ship_map = np.array(ship_map)
         pad_offset = (32 - size) // 2
         print(halite_map.shape)
         moves_node = tf.get_default_graph().get_collection('m_logits')[0]
-        train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size] = halite_map
-        X = []
-        temp = np.expand_dims(train_x, -1)
-        X.append(temp)
+        train_features = np.stack((halite_map, ship_map),axis=-1)
+        train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size, :] = train_features
+        X = [train_x]
         X = np.array(X)
+
         feed_dict = {frame_node: X}
         print(X.shape)
         moves = sess.run([moves_node], feed_dict)
-        moves = np.array(moves).squeeze(axis=0)
-        print(moves, moves.shape)
+        moves = np.array(moves)
+        print("moves before argmax", moves[0][0][0][0:2])
+        print("moves shape before argmax", moves.shape)
+        moves = np.argmax(moves, -1)
+        print("moves is", moves[0][0][0][:])
+        print("moves shape", moves.shape)
         return actions

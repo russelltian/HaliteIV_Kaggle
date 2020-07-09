@@ -18,10 +18,17 @@ class testHalite(unittest.TestCase):
         self.assertIsNot(game.ship_actions, [])
         self.assertIsNot(game.shipyard_actions, [])
 
+    def test_custom(self):
+        file = "replayJson.json"
+        game = utils.Halite()
+        game.load_replay(file)
+        game.load_data()
+        length = len(game.halite)
+        for i in range(length):
+            print(game.ship_position[i])
+            print(game.ship_actions[i], " \n")
+
 
 if __name__ == '__main__':
     unittest.main()
-    file = "replayJson.json"
-    game = utils.Halite()
-    game.load_replay(file)
-    game.load_data()
+
