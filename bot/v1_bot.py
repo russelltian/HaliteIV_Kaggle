@@ -70,7 +70,7 @@ class Gameplay(object):
 
     def load_model(self):
         sess = tf.Session()
-        saver = tf.train.import_meta_graph('model_29.ckpt.meta')
+        saver = tf.train.import_meta_graph('model_9.ckpt.meta')
         saver.restore(sess, tf.train.latest_checkpoint('./'))
 
         # Get tensorflow training graph
@@ -90,7 +90,7 @@ class Gameplay(object):
             ("SPAWN" being only applicable to shipyards and the others only to ships).
         """
         this_turn = Gameplay(obs, config)
-        this_turn.print_board()
+        # this_turn.print_board()
         current_player = this_turn.board.current_player
         size = self.size
         halite_map = np.zeros((size, size))
@@ -99,7 +99,7 @@ class Gameplay(object):
             for j in range(size):
                 halite_map[i][j] = this_turn.obs.halite[i * size + j]
 
-        print(halite_map)
+        # print(halite_map)
         for ship in current_player.ships:
             position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
             ship_map[position[0]][position[1]] = 1
@@ -108,7 +108,7 @@ class Gameplay(object):
         # print([n.name for n in tf.get_default_graph().as_graph_def().node])
         frame_node = tf.get_default_graph().get_collection('frames')[0]
         loss_node = tf.get_default_graph().get_collection('loss')[0]
-        train_x = np.zeros((32, 32,2))
+        train_x = np.zeros((32, 32, 2))
 
         # add padding
 
@@ -117,18 +117,23 @@ class Gameplay(object):
         pad_offset = (32 - size) // 2
         print(halite_map.shape)
         moves_node = tf.get_default_graph().get_collection('m_logits')[0]
-        train_features = np.stack((halite_map, ship_map),axis=-1)
+        train_features = np.stack((halite_map, ship_map), axis=-1)
         train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size, :] = train_features
         X = [train_x]
         X = np.array(X)
 
         feed_dict = {frame_node: X}
-        print(X.shape)
-        moves = sess.run([moves_node], feed_dict)
-        moves = np.array(moves)
-        print("moves before argmax", moves[0][0][0][0:2])
-        print("moves shape before argmax", moves.shape)
-        moves = np.argmax(moves, -1)
-        print("moves is", moves[0][0][0][:])
-        print("moves shape", moves.shape)
+        print("Training data dimension:", X.shape)
+        padded_moves = sess.run([moves_node], feed_dict)
+        padded_moves = padded_moves[0][0]
+        ship_moves = padded_moves[pad_offset:pad_offset + size, pad_offset:pad_offset + size, :]
+        valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
+        for ship in current_player.ships:
+            position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
+            print(ship_moves[position[0]][position[1]])
+            this_action = valid_move[np.argmax(ship_moves[position[0]][position[1]])]
+            if this_action == "STAY":
+                actions[ship.id] = "EAST"
+            else:
+                actions[ship.id] = this_action
         return actions
