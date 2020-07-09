@@ -75,6 +75,7 @@ class Halite(object):
         assert (halite.shape[0] == total_step - 1)
         assert (halite.shape[1] == map_size)
         assert (halite.shape[2] == map_size)
+        halite = halite/1000  # round it
         return halite
 
     def load_moves(self, map_size: int, num_of_players: int):
