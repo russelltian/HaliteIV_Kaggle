@@ -5,13 +5,13 @@ def build_model():
 
     size = 8  # Single size for easier debugging (for now)
     max_s = [1, 2, 2, 1]  # size of the sliding window for max pooling
-    learning_rate = 0.0001
+    learning_rate = 0.0005
 
     # frames = tf.placeholder(tf.float32, [None, 256, 256, 5]) # None is the number of samples, rename the variable name later
     frames = tf.placeholder(tf.float32, [None, 32, 32, 2])
     # can_afford = tf.placeholder(tf.float32, [None, 3])
     # turns_left = tf.placeholder(tf.float32, [None, 1])
-    # my_ships = tf.placeholder(tf.float32, [None, 256, 256, 1])
+    my_ships = tf.placeholder(tf.float32, [None, 32, 32, 1])
 
     moves = tf.placeholder(tf.uint8, [None, 32, 32, 1])
     # generate = tf.placeholder(tf.float32, [None, 1])
@@ -19,7 +19,7 @@ def build_model():
     tf.add_to_collection('frames', frames)
     # tf.add_to_collection('can_afford', can_afford)
     # tf.add_to_collection('turns_left', turns_left)
-    # tf.add_to_collection('my_ships', my_ships)
+    tf.add_to_collection('my_ships', my_ships)
     tf.add_to_collection('moves', moves)
     # tf.add_to_collection('generate', generate)
 

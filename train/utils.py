@@ -206,6 +206,24 @@ class Halite(object):
             return train_x, train_y
         return train_feature_mix, self.ship_actions.copy()
 
+    def get_my_ships(self, dim=32):
+        """
+                After loading the raw data, get current player ship positions with padding
+                :param dim: the training data has the shape of [ None, dim, dim]
+                :return:
+                """
+        assert (self.replay is not None and self.ship_position is not None)
+        step = self.ship_position.shape[0]
+        shape = self.ship_position.shape[1]
+        ship_info = np.zeros((step, dim, dim))
+        # add padding
+        if shape != dim:
+            pad_offset = (dim - self.halite.shape[1]) // 2
+            ship_info[:, pad_offset:pad_offset + shape, pad_offset:pad_offset + shape] = self.ship_position
+            return ship_info
+        return self.ship_position.copy()
+
+
 # game = Halite()
 # game.load_replay("1208740.json")
 # #game.load_halite(21)
