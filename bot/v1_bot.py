@@ -9,20 +9,26 @@ from kaggle_environments.envs.halite.helpers import *
 
 class Gameplay(object):
     def __init__(self, obs, config):
-        self.obs = obs
-        self.config = config
         size = config.size
         self.size = size
         self.ships = np.zeros((size, size))
         self.shipyards = np.zeros((size, size))
         self.board = Board(obs, config)
-        self.me = self.board.current_player
-        self.model = self.load_model()
-
+        self.me = self.board.current_player.id
+        self.sess = None
+        self.saver = None
     def print_board(self):
         board = self.board
         print(board)
-
+    def reset_board(self, obs, config):
+        # The size of the board must be constant
+        assert(self.size == config.size)
+        size = self.size
+        self.ships = np.zeros((size, size))
+        self.shipyards = np.zeros((size, size))
+        self.board = Board(obs, config)
+        # The new observation must still serve for the same player
+        assert(self.me == self.board.current_player.id)
     # Converts position from 1D to 2D representation in (left most col, left most row)
     def get_col_row(self, size: int, pos: int):
         return pos % size, pos // size
@@ -70,11 +76,11 @@ class Gameplay(object):
 
     def load_model(self):
         sess = tf.Session()
-        saver = tf.train.import_meta_graph('model_9.ckpt.meta')
+        saver = tf.train.import_meta_graph('model.ckpt.meta')
         saver.restore(sess, tf.train.latest_checkpoint('./'))
 
         # Get tensorflow training graph
-        return sess, saver
+        self.sess, self.saver = sess, saver
 
     def agent(self, obs, config):
         """Central function for an agent.
@@ -89,7 +95,7 @@ class Gameplay(object):
             and action is one of "CONVERT", "SPAWN", "NORTH", "SOUTH", "EAST", "WEST"
             ("SPAWN" being only applicable to shipyards and the others only to ships).
         """
-        this_turn = Gameplay(obs, config)
+        this_turn = self
         # this_turn.print_board()
         current_player = this_turn.board.current_player
         size = self.size
@@ -97,14 +103,17 @@ class Gameplay(object):
         ship_map = np.zeros((size, size))
         for i in range(size):
             for j in range(size):
-                halite_map[i][j] = this_turn.obs.halite[i * size + j]
+                halite_map[i][j] = obs.halite[i * size + j]
 
         # print(halite_map)
         for ship in current_player.ships:
             position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
             ship_map[position[0]][position[1]] = 1
         actions = {}
-        sess, saver = self.load_model()
+        if not self.sess or not self.saver:
+            print("Error, no model found")
+            return {}
+        sess, saver = self.sess, self.saver
         # print([n.name for n in tf.get_default_graph().as_graph_def().node])
         frame_node = tf.get_default_graph().get_collection('frames')[0]
         loss_node = tf.get_default_graph().get_collection('loss')[0]
@@ -133,7 +142,7 @@ class Gameplay(object):
             print(ship_moves[position[0]][position[1]])
             this_action = valid_move[np.argmax(ship_moves[position[0]][position[1]])]
             if this_action == "STAY":
-                actions[ship.id] = "EAST"
+                actions[ship.id] = "NORTH"
             else:
                 actions[ship.id] = this_action
         return actions

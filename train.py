@@ -97,8 +97,8 @@ with tf.Session() as sess:
         for i in range(200):
             loss, _ = sess.run([loss_node, optimizer_node], feed_dict=feed_dict)
             print(loss)
-    saver.save(sess, os.path.join("./", 'model_{}.ckpt'.format(step)))
-
+    #saver.save(sess, os.path.join("./", 'model_{}.ckpt'.format(step)))
+    saver.save(sess, os.path.join("./", 'model.ckpt'))
         # val = queue.get()
         # print(val)
 
