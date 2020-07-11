@@ -1,5 +1,7 @@
 import numpy as np
 import tensorflow._api.v2.compat.v1 as tf
+import base64
+# from serialized_meta import model_string
 
 tf.compat.v1.disable_eager_execution()
 
@@ -111,11 +113,14 @@ class Gameplay(object):
             ship_map[position[0]][position[1]] = 1
         actions = {}
 
+        # with open("model_29.ckpt.meta", "wb") as f:
+        #     f.write(base64.b64decode(model_string))
+
         configProto = tf.ConfigProto(allow_soft_placement=False)
         with tf.Session(config=configProto) as sess:
-            tf.train.import_meta_graph('model_9.ckpt.meta')
+            tf.train.import_meta_graph('../model_29.ckpt.meta')
             saver = tf.train.Saver()
-            saver.restore(sess, "model_9.ckpt")
+            saver.restore(sess, "model_29.ckpt")
 
             del saver
 
@@ -128,6 +133,7 @@ class Gameplay(object):
             # frame_node = tf.get_default_graph().get_collection('frames')[0]
             # loss_node = tf.get_default_graph().get_collection('loss')[0]
             train_x = np.zeros((32, 32))
+            train_x2 = np.zeros((32, 32))
 
             # add padding
 
@@ -136,13 +142,24 @@ class Gameplay(object):
             print(halite_map.shape)
             # moves_node = tf.get_default_graph().get_collection('moves')[0]
             train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size] = halite_map
+
+            train_x2[pad_offset:pad_offset + size, pad_offset:pad_offset + size] = halite_map
             X = []
             temp = np.expand_dims(train_x, -1)
             X.append(temp)
             X = np.array(X)
-            feed_dict = {frames_node: X}
-            print(X.shape)
+            X2 = []
+            temp2 = np.expand_dims(train_x2, -1)
+            X2.append((temp2))
+            X2 = np.array(X2)
+            X = np.concatenate((X, X2), axis=-1)
+            feed_dict = {frames_node: X,}
+            print("X shape", X.shape)
             moves = sess.run([moves_node], feed_dict)
+
+            del feed_dict
+            del X
+
             # moves = np.array(moves).squeeze(axis=0)
             moves = np.array(moves)
             print("moves before argmax", moves[0][0][0][0:2])
@@ -150,4 +167,16 @@ class Gameplay(object):
             moves = np.argmax(moves, -1)
             print("moves is", moves[0][0][0][0:2])
             print("moves shape", moves.shape)
-            return actions
+
+            player_halite, shipyards, ships = obs.players[obs.player]
+
+            ship_sorted_by_halite = sorted(ships.items(), key=lambda halite: halite[1][1], reverse=True)
+
+            DIRS = ["NORTH", "SOUTH", "EAST", "WEST"]
+
+            for uid, ship in ship_sorted_by_halite:
+                if moves[0][0][0][0] == 0:
+                    actions[uid] = DIRS[0]
+
+        tf.reset_default_graph()
+        return actions
