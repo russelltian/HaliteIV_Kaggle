@@ -101,6 +101,7 @@ class Gameplay(object):
         size = self.size
         halite_map = np.zeros((size, size))
         ship_map = np.zeros((size, size))
+        cargo_map = np.zeros((size, size))
         for i in range(size):
             for j in range(size):
                 halite_map[i][j] = obs.halite[i * size + j]
@@ -109,6 +110,8 @@ class Gameplay(object):
         for ship in current_player.ships:
             position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
             ship_map[position[0]][position[1]] = 1
+            cargo_map[position[0]][position[1]] = ship.halite
+
         actions = {}
         if not self.sess or not self.saver:
             print("Error, no model found")
@@ -117,16 +120,17 @@ class Gameplay(object):
         # print([n.name for n in tf.get_default_graph().as_graph_def().node])
         frame_node = tf.get_default_graph().get_collection('frames')[0]
         loss_node = tf.get_default_graph().get_collection('loss')[0]
-        train_x = np.zeros((32, 32, 2))
+        train_x = np.zeros((32, 32, 3))
 
         # add padding
 
         halite_map = np.array(halite_map)
         ship_map = np.array(ship_map)
+        cargo_map = np.array(cargo_map)
         pad_offset = (32 - size) // 2
         print(halite_map.shape)
         moves_node = tf.get_default_graph().get_collection('m_logits')[0]
-        train_features = np.stack((halite_map, ship_map), axis=-1)
+        train_features = np.stack((halite_map, ship_map, cargo_map), axis=-1)
         train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size, :] = train_features
         X = [train_x]
         X = np.array(X)
