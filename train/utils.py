@@ -21,6 +21,8 @@ class Halite(object):
         self.ship_actions = []
         self.shipyard_actions = []
         self.ship_position = []
+        self.cargo = []
+        self.turns_left = []
 
     def load_replay(self, path: str):
         """
@@ -44,7 +46,9 @@ class Halite(object):
         map_size = game_config["size"]
         self.halite = self.load_halite(map_size)
         self.ship_actions, self.shipyard_actions = self.load_moves(map_size, number_of_players)
-        self.ship_position = self.load_ship_position(map_size)
+        self.ship_position, self.cargo = self.load_ship_position(map_size)
+        step = self.cargo.shape[0]
+        self.turns_left = [step - i for i in range(step)]
 
     def load_halite(self, map_size: int):
         """
@@ -148,6 +152,7 @@ class Halite(object):
         """
         valid_actions = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
         ships_position = []
+        ships_cargo = []
         # Iterate through each step of the game to get step based information
         for step, content in enumerate(self.replay["steps"]):
             if step == 0:
@@ -158,7 +163,7 @@ class Halite(object):
 
             step_ships_position = np.zeros((map_size, map_size), np.int32)
             # step_shipyard_action = np.zeros((map_size, map_size))
-
+            step_ship_cargo = np.zeros((map_size, map_size), np.float32)
             # Load ship moves for all active players
             for pid in range(len(content)):
                 if "player" not in content[pid]["observation"]:
@@ -174,14 +179,17 @@ class Halite(object):
                     player_ship = player_observation[2]
                     # load action
                     for ship_id, ship_info in player_ship.items():
-                        assert (len(ship_info) == 2)  # [pos,cargo]
+                        assert (len(ship_info) == 2)  # ship_info : [pos,cargo]
                         ship_pos_1d = ship_info[0]
                         ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
                         step_ships_position[ship_pos_2d[0]][ship_pos_2d[1]] = 1
+                        step_ship_cargo[ship_pos_2d[0]][ship_pos_2d[1]] = ship_info[1]
                     ships_position.append(step_ships_position)
+                    ships_cargo.append(step_ship_cargo)
         ships_position = np.array(ships_position)
+        ships_cargo = np.array(ships_cargo)
         #print(ships_position.shape)
-        return ships_position
+        return ships_position, ships_cargo
 
     def get_training_data(self, dim=32):
         """
@@ -195,9 +203,9 @@ class Halite(object):
         assert (self.halite.shape[0] == self.ship_actions.shape[0])
         step = self.halite.shape[0]
         shape = self.halite.shape[1]
-        train_x = np.zeros((step, dim, dim, 2))
+        train_x = np.zeros((step, dim, dim, 3))
         train_y = np.zeros((step, dim, dim))
-        train_feature_mix = np.stack([self.halite, self.ship_position], axis=-1)
+        train_feature_mix = np.stack([self.halite, self.ship_position, self.cargo], axis=-1)
         # add padding
         if shape != dim:
             pad_offset = (dim - self.halite.shape[1]) // 2
