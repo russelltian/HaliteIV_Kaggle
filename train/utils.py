@@ -22,6 +22,7 @@ class Halite(object):
         self.shipyard_actions = []
         self.ship_position = []
         self.cargo = []
+        self.turns_left = []
 
     def load_replay(self, path: str):
         """
@@ -46,6 +47,8 @@ class Halite(object):
         self.halite = self.load_halite(map_size)
         self.ship_actions, self.shipyard_actions = self.load_moves(map_size, number_of_players)
         self.ship_position, self.cargo = self.load_ship_position(map_size)
+        step = self.cargo.shape[0]
+        self.turns_left = [step - i for i in range(step)]
 
     def load_halite(self, map_size: int):
         """
@@ -200,9 +203,9 @@ class Halite(object):
         assert (self.halite.shape[0] == self.ship_actions.shape[0])
         step = self.halite.shape[0]
         shape = self.halite.shape[1]
-        train_x = np.zeros((step, dim, dim, 2))
+        train_x = np.zeros((step, dim, dim, 3))
         train_y = np.zeros((step, dim, dim))
-        train_feature_mix = np.stack([self.halite, self.ship_position], axis=-1)
+        train_feature_mix = np.stack([self.halite, self.ship_position, self.cargo], axis=-1)
         # add padding
         if shape != dim:
             pad_offset = (dim - self.halite.shape[1]) // 2

@@ -5,20 +5,22 @@ def build_model():
 
     size = 8  # Single size for easier debugging (for now)
     max_s = [1, 2, 2, 1]  # size of the sliding window for max pooling
-    learning_rate = 0.0005
+    learning_rate = 0.0001
 
     # frames = tf.placeholder(tf.float32, [None, 256, 256, 5]) # None is the number of samples, rename the variable name later
-    frames = tf.placeholder(tf.float32, [None, 32, 32, 2])
+    frames = tf.placeholder(tf.float32, [None, 32, 32, 3]) # features: halite_available, others_ship, cargo
     # can_afford = tf.placeholder(tf.float32, [None, 3])
-    # turns_left = tf.placeholder(tf.float32, [None, 1])
+    turns_left = tf.placeholder(tf.float32, [None, 1])
     my_ships = tf.placeholder(tf.float32, [None, 32, 32, 1])
+
+    my_ships = tf.cast(my_ships, tf.float32)
 
     moves = tf.placeholder(tf.uint8, [None, 32, 32, 1])
     # generate = tf.placeholder(tf.float32, [None, 1])
 
     tf.add_to_collection('frames', frames)
     # tf.add_to_collection('can_afford', can_afford)
-    # tf.add_to_collection('turns_left', turns_left)
+    tf.add_to_collection('turns_left', turns_left)
     tf.add_to_collection('my_ships', my_ships)
     tf.add_to_collection('moves', moves)
     # tf.add_to_collection('generate', generate)
@@ -26,12 +28,12 @@ def build_model():
     moves = tf.one_hot(moves, 6)
 
     # ca = tf.layers.dense(can_afford, size)
-    # tl = tf.layers.dense(turns_left, size)
+    tl = tf.layers.dense(turns_left, size)
 
     # ca = tf.expand_dims(ca, 1)
     # ca = tf.expand_dims(ca, 1)
-    # tl = tf.expand_dims(tl, 1)
-    # tl = tf.expand_dims(tl, 1)
+    tl = tf.expand_dims(tl, 1)
+    tl = tf.expand_dims(tl, 1)
 
     d_l1_a = tf.layers.conv2d(frames, size, 3, activation=tf.nn.relu, padding='same')  # input is frames, filters is size, kernal size is 3(x3)
     d_l1_p = tf.nn.max_pool(d_l1_a, max_s, max_s, padding='VALID')  # 16
@@ -48,9 +50,9 @@ def build_model():
     d_l5_a = tf.layers.conv2d(d_l4_p, size, 3, activation=tf.nn.relu, padding='same')
     d_l5_p = tf.nn.max_pool(d_l5_a, max_s, max_s, padding='VALID')  # 1
 
-    # final_state = tf.concat([d_l8_p, ca, tl], -1)
-    # latent = tf.layers.dense(final_state, size, activation=tf.nn.relu)
-    latent = tf.layers.dense(d_l5_p, size, activation=tf.nn.relu)
+    final_state = tf.concat([d_l5_p, tl], -1)
+    latent = tf.layers.dense(final_state, size, activation=tf.nn.relu)
+    # latent = tf.layers.dense(d_l5_p, size, activation=tf.nn.relu)
 
     u_l5_a = tf.layers.conv2d_transpose(latent, size, 3, 2, activation=tf.nn.relu, padding='same')  # 2
     u_l5_c = tf.concat([u_l5_a, d_l5_a], -1)
@@ -72,9 +74,13 @@ def build_model():
     u_l1_c = tf.concat([u_l1_a, d_l1_a], -1)
     u_l1_s = tf.layers.conv2d(u_l1_c, size, 3, activation=tf.nn.relu, padding='same')
 
-    moves_logits = tf.layers.conv2d(u_l1_s, 6, 3, activation=None, padding='same')
-    tf.add_to_collection('m_logits', moves_logits)
+    # generate_logits = tf.layers.dense(latent, 1, activation=None)
+    #
+    # generate_logits = tf.squeeze(generate_logits, [1, 2])
 
+    moves_logits = tf.layers.conv2d(u_l1_s, 6, 3, activation=None, padding='same')
+
+    tf.add_to_collection('m_logits', moves_logits)
 
     losses = tf.nn.softmax_cross_entropy_with_logits_v2(labels=moves,
                                                         logits=moves_logits,
@@ -82,15 +88,13 @@ def build_model():
 
     losses = tf.expand_dims(losses, -1)
 
-    # masked_loss = losses * my_ships
-    masked_loss = losses * 1  # hard code
+    masked_loss = losses * my_ships
 
-    # ships_per_frame = tf.reduce_sum(my_ships, axis=[1, 2])
+    ships_per_frame = tf.reduce_sum(my_ships, axis=[1, 2])
 
     frame_loss = tf.reduce_sum(masked_loss, axis=[1, 2])
 
-    # average_frame_loss = frame_loss / ships_per_frame
-    average_frame_loss = frame_loss
+    average_frame_loss = frame_loss / (ships_per_frame + 0.00000001) # First frames have no ship
 
     loss = tf.reduce_sum(average_frame_loss)
 

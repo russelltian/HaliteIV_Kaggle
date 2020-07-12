@@ -29,6 +29,7 @@ game.load_replay(path)
 game.load_data()
 X_frame, Y = game.get_training_data()
 X_ship = game.get_my_ships()
+turns_left = game.turns_left
 # print(type(X))
 # print(Y.shape)
 #exit(0)
@@ -37,7 +38,7 @@ build_model()
 
 frames_node = tf.get_collection('frames')[0]
 # can_afford_node = tf.get_collection('can_afford')[0]
-# turns_left_node = tf.get_collection('turns_left')[0]
+turns_left_node = tf.get_collection('turns_left')[0]
 my_ships_node = tf.get_collection('my_ships')[0]
 moves_node = tf.get_collection('moves')[0]
 # generate_node = tf.get_collection('generate')[0]
@@ -55,26 +56,29 @@ with tf.Session() as sess:
         print(step)
         # second batch of parameters: ship_pos
         s_batch = []
+        # third batch of parameters: turns_left
+        t_batch = []
         total_size = X_frame.shape[0]
         for i in range(batch_size):
             rand_num = random.randint(0, total_size-1)
             frame, move = X_frame[rand_num], Y[rand_num]
             my_ships = X_ship[rand_num]
+            turn_left = np.append([], turns_left[rand_num])
             f_batch.append(frame)
             m_batch.append(move)
             # g_batch.append(generate)
             # c_batch.append(can_afford)
-            # t_batch.append(turns_left)
+            t_batch.append(turn_left)
             s_batch.append(my_ships)
         f_batch = np.stack(f_batch)
         m_batch = np.stack(m_batch)
         # g_batch = np.stack(g_batch)
         # c_batch = np.stack(c_batch)
-        # t_batch = np.stack(t_batch)
+        t_batch = np.stack(t_batch)
         s_batch = np.stack(s_batch)
 
         # g_batch = np.expand_dims(g_batch, -1)
-        # t_batch = np.expand_dims(t_batch, -1)
+       # t_batch = np.expand_dims(t_batch, -1)
         m_batch = np.expand_dims(m_batch, -1)
         #f_batch = np.expand_dims(f_batch, -1)
         s_batch = np.expand_dims(s_batch, -1)
@@ -91,6 +95,7 @@ with tf.Session() as sess:
 
         feed_dict = {frames_node: f_batch,
                      moves_node: m_batch,
+                     turns_left_node: t_batch,
                      my_ships_node: s_batch,
                      }
 
