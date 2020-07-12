@@ -47,8 +47,8 @@ class Halite(object):
         self.halite = self.load_halite(map_size)
         self.ship_actions, self.shipyard_actions = self.load_moves(map_size, number_of_players)
         self.ship_position, self.cargo = self.load_ship_position(map_size)
-        step = self.cargo.shape[0]
-        self.turns_left = [step - i for i in range(step)]
+        total_step = self.cargo.shape[0]
+        self.turns_left = np.array([total_step - i for i in range(total_step)])
 
     def load_halite(self, map_size: int):
         """

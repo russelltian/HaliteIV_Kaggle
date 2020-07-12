@@ -17,6 +17,7 @@ class Gameplay(object):
         self.me = self.board.current_player.id
         self.sess = None
         self.saver = None
+
     def print_board(self):
         board = self.board
         print(board)
@@ -120,6 +121,7 @@ class Gameplay(object):
         # print([n.name for n in tf.get_default_graph().as_graph_def().node])
         frame_node = tf.get_default_graph().get_collection('frames')[0]
         loss_node = tf.get_default_graph().get_collection('loss')[0]
+        turns_left_node = tf.get_default_graph().get_collection('turns_left')[0]
         train_x = np.zeros((32, 32, 3))
 
         # add padding
@@ -135,7 +137,8 @@ class Gameplay(object):
         X = [train_x]
         X = np.array(X)
 
-        feed_dict = {frame_node: X}
+        turns_left = np.array(config.episodeSteps - obs.step - 1).reshape(1,1)
+        feed_dict = {frame_node: X, turns_left_node: turns_left}
         print("Training data dimension:", X.shape)
         padded_moves = sess.run([moves_node], feed_dict)
         padded_moves = padded_moves[0][0]
@@ -146,7 +149,8 @@ class Gameplay(object):
             print(ship_moves[position[0]][position[1]])
             this_action = valid_move[np.argmax(ship_moves[position[0]][position[1]])]
             if this_action == "STAY":
-                actions[ship.id] = "NORTH"
+                continue
+                #actions[ship.id] = "NORTH"
             else:
                 actions[ship.id] = this_action
         return actions
