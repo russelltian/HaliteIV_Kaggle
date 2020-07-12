@@ -20,7 +20,7 @@ from architecture import build_model
 queue = [Queue(32)]
 queue_m_sizes = [32]
 
-batch_size = 10
+batch_size = 30
 
 # Load all training data
 game = utils.Halite()
@@ -30,8 +30,8 @@ game.load_data()
 X_frame, Y = game.get_training_data()
 X_ship = game.get_my_ships()
 turns_left = game.turns_left
-# print(type(X))
-# print(Y.shape)
+assert(turns_left is not None)
+
 #exit(0)
 
 build_model()
@@ -50,7 +50,7 @@ saver = tf.train.Saver(max_to_keep=1)
 with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
-    for step in range(10):
+    for step in range(20):
         # first batch of parameters X: (halite,ship_pos) Y: ship_moves
         f_batch, m_batch = [], []
         print(step)
@@ -63,7 +63,7 @@ with tf.Session() as sess:
             rand_num = random.randint(0, total_size-1)
             frame, move = X_frame[rand_num], Y[rand_num]
             my_ships = X_ship[rand_num]
-            turn_left = np.append([], turns_left[rand_num])
+            turn_left = turns_left[rand_num].reshape(1)
             f_batch.append(frame)
             m_batch.append(move)
             # g_batch.append(generate)
