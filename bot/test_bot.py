@@ -2,7 +2,7 @@ from kaggle_environments import evaluate, make
 import sys
 from bot import v1_bot
 from bot import t_bot
-env = make("halite", configuration={"size": 10, "episodeSteps": 50}, debug=True)
+env = make("halite", configuration={"size": 5, "episodeSteps": 50}, debug=True)
 trainer = env.train([None, "random"])
 observation = trainer.reset()
 mybot = None
@@ -18,6 +18,6 @@ while not env.done:
     observation = trainer.step(action)[0]
     print("Reward gained", observation.players[0][0])
 out = env.render(mode="html", width=500, height=450)
-f = open("replay.html", "w")
+f = open("replay.html", "wt")
 f.write(out)
 f.close()

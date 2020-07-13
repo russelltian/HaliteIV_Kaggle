@@ -28,7 +28,11 @@ class testHalite(unittest.TestCase):
             print(game.ship_position[i])
             print(game.ship_actions[i], " \n")
 
-
+    def test_find_winner(self):
+        assert([1,2,3,4].index(max([1,2,3,4])) == 3)
+        assert ([1, 5, 3, 4].index(max([1, 5, 3, 4])) == 1)
+        assert ([1, 2, 12, 4].index(max([1, 2, 12, 4])) == 2)
+        assert ([10, 2, 3, 4].index(max([10, 2, 3, 4])) == 0)
 if __name__ == '__main__':
     unittest.main()
 
