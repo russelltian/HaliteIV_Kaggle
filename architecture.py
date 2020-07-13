@@ -8,15 +8,15 @@ def build_model():
     learning_rate = 0.0001
 
     # frames = tf.placeholder(tf.float32, [None, 256, 256, 5]) # None is the number of samples, rename the variable name later
-    frames = tf.placeholder(tf.float32, [None, 32, 32, 3]) # features: halite_available, others_ship, cargo
+    frames = tf.placeholder(tf.float32, [None, 32, 32, 4], name="frames") # features: halite_available, others_ship, cargo, self_shipyard
     # can_afford = tf.placeholder(tf.float32, [None, 3])
-    turns_left = tf.placeholder(tf.float32, [None, 1])
-    my_ships = tf.placeholder(tf.float32, [None, 32, 32, 1])
+    turns_left = tf.placeholder(tf.float32, [None, 1], name="turnsleft")
+    my_ships = tf.placeholder(tf.float32, [None, 32, 32, 1], name="myships")
 
     my_ships = tf.cast(my_ships, tf.float32)
 
-    moves = tf.placeholder(tf.uint8, [None, 32, 32, 1])
-    # generate = tf.placeholder(tf.float32, [None, 1])
+    moves = tf.placeholder(tf.uint8, [None, 32, 32, 1], name="moves")
+    # generate = tf.placeholder(tf.float32, [None, 1], name="generate")
 
     tf.add_to_collection('frames', frames)
     # tf.add_to_collection('can_afford', can_afford)
