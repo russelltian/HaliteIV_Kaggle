@@ -38,7 +38,7 @@ frames_node = tf.get_collection('frames')[0]
 turns_left_node = tf.get_collection('turns_left')[0]
 my_ships_node = tf.get_collection('my_ships')[0]
 moves_node = tf.get_collection('moves')[0]
-#generate_node = tf.get_collection('generate')[0]
+spawn_node = tf.get_collection('spawn')[0]
 loss_node = tf.get_collection('loss')[0]
 optimizer_node = tf.get_collection('optimizer')[0]
 
@@ -48,7 +48,7 @@ path = random.choice(replay_files)
 with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
-    for step in range(50):
+    for step in range(5):
         # Load all training data
         game = utils.Halite()
         # path = random.choice(replay_files)
@@ -57,10 +57,11 @@ with tf.Session() as sess:
         X_frame, Y_ship, Y_shipyard = game.get_training_data()
         X_ship = game.get_my_ships()
         turns_left = game.turns_left
+        spawn = game.spawn
         assert (turns_left is not None)
 
         # first batch of parameters X: (halite,ship_pos) Y: ship_moves
-        f_batch, m_batch, g_batch = [], [], []
+        f_batch, m_batch, spawn_batch = [], [], []
         print(step)
         # second batch of parameters: ship_pos
         s_batch = []
@@ -69,26 +70,28 @@ with tf.Session() as sess:
         total_size = X_frame.shape[0]
         for i in range(batch_size):
             rand_num = random.randint(0, total_size-1)
-            frame, move, generate = X_frame[rand_num], Y_ship[rand_num], Y_shipyard[rand_num]
+            frame, move = X_frame[rand_num], Y_ship[rand_num]
             my_ships = X_ship[rand_num]
             turn_left = turns_left[rand_num].reshape(1)
+            generate = spawn[rand_num].reshape(1)
             f_batch.append(frame)
             m_batch.append(move)
-            g_batch.append(generate)
+            spawn_batch.append(generate)
             # c_batch.append(can_afford)
             t_batch.append(turn_left)
             s_batch.append(my_ships)
+
         f_batch = np.stack(f_batch)
         m_batch = np.stack(m_batch)
-        g_batch = np.stack(g_batch)
+        spawn_batch = np.stack(spawn_batch)
         # c_batch = np.stack(c_batch)
         t_batch = np.stack(t_batch)
         s_batch = np.stack(s_batch)
 
-        g_batch = np.expand_dims(g_batch, -1)
-       # t_batch = np.expand_dims(t_batch, -1)
+        # spawn_batch = np.expand_dims(spawn_batch, -1)
+        # t_batch = np.expand_dims(t_batch, -1)
         m_batch = np.expand_dims(m_batch, -1)
-        #f_batch = np.expand_dims(f_batch, -1)
+        # f_batch = np.expand_dims(f_batch, -1)
         s_batch = np.expand_dims(s_batch, -1)
 
         # print([x.shape for x in [f_batch, m_batch]])
@@ -103,7 +106,7 @@ with tf.Session() as sess:
 
         feed_dict = {frames_node: f_batch,
                      moves_node: m_batch,
-                     #generate_node: g_batch,
+                     spawn_node: spawn_batch,
                      turns_left_node: t_batch,
                      my_ships_node: s_batch,
                      }

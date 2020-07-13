@@ -16,14 +16,14 @@ def build_model():
     my_ships = tf.cast(my_ships, tf.float32)
 
     moves = tf.placeholder(tf.uint8, [None, 32, 32, 1], name="moves")
-    # generate = tf.placeholder(tf.float32, [None, 1], name="generate")
+    spawn = tf.placeholder(tf.float32, [None, 1], name="spawn")
 
     tf.add_to_collection('frames', frames)
     # tf.add_to_collection('can_afford', can_afford)
     tf.add_to_collection('turns_left', turns_left)
     tf.add_to_collection('my_ships', my_ships)
     tf.add_to_collection('moves', moves)
-    # tf.add_to_collection('generate', generate)
+    tf.add_to_collection('spawn', spawn)
 
     moves = tf.one_hot(moves, 6)
 
@@ -74,13 +74,14 @@ def build_model():
     u_l1_c = tf.concat([u_l1_a, d_l1_a], -1)
     u_l1_s = tf.layers.conv2d(u_l1_c, size, 3, activation=tf.nn.relu, padding='same')
 
-    # generate_logits = tf.layers.dense(latent, 1, activation=None)
+    spawn_logits = tf.layers.dense(latent, 1, activation=None)
     #
-    # generate_logits = tf.squeeze(generate_logits, [1, 2])
+    spawn_logits = tf.squeeze(spawn_logits, [1, 2])
 
     moves_logits = tf.layers.conv2d(u_l1_s, 6, 3, activation=None, padding='same')
 
     tf.add_to_collection('m_logits', moves_logits)
+    tf.add_to_collection('s_logits', spawn_logits)
 
     losses = tf.nn.softmax_cross_entropy_with_logits_v2(labels=moves,
                                                         logits=moves_logits,
@@ -96,7 +97,11 @@ def build_model():
 
     average_frame_loss = frame_loss / (ships_per_frame + 0.00000001) # First frames have no ship
 
-    loss = tf.reduce_sum(average_frame_loss)
+    spawn_losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=spawn, logits=spawn_logits)
+
+    spawn_losses = tf.reduce_mean(spawn_losses)
+
+    loss = tf.reduce_mean(average_frame_loss) + 0.01 * spawn_losses
 
     optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
