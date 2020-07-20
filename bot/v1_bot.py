@@ -152,6 +152,7 @@ class Gameplay(object):
         pad_offset = (32 - size) // 2
         print(halite_map.shape)
         moves_node = tf.get_default_graph().get_collection('m_logits')[0]
+        spawn_node = tf.get_default_graph().get_collection('s_logits')[0]
         train_features = np.stack((halite_map, ship_map, cargo_map, shipyard_map), axis=-1)
         train_x[pad_offset:pad_offset + size, pad_offset:pad_offset + size, :] = train_features
         X = [train_x]
@@ -163,10 +164,13 @@ class Gameplay(object):
         feed_dict = {frame_node: X, turns_left_node: turns_left, my_ships_node: my_ships}
 
         print("Training data dimension:", X.shape)
-        padded_moves = sess.run([moves_node], feed_dict)
-        padded_moves = padded_moves[0][0]
+        padded_moves, spawn_or_not = sess.run([moves_node, spawn_node], feed_dict)
+        print('padded_moves is', padded_moves.shape)
+        padded_moves = padded_moves[0]
         ship_moves = padded_moves[pad_offset:pad_offset + size, pad_offset:pad_offset + size, :]
         valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
+
+        print("spawn or not is", spawn_or_not)
         for ship in current_player.ships:
             position = self.convert_kaggle_2D_to_coordinate_2D(this_turn.size, list(ship.position))
             print(ship_moves[position[0]][position[1]])
@@ -176,4 +180,6 @@ class Gameplay(object):
                 #actions[ship.id] = "NORTH"
             else:
                 actions[ship.id] = this_action
+
+
         return actions

@@ -25,6 +25,7 @@ class Halite(object):
         self.shipyard_position = []
         self.cargo = []
         self.turns_left = []
+        self.spawn = []
 
     def load_replay(self, path: str):
         """
@@ -48,7 +49,7 @@ class Halite(object):
         map_size = game_config["size"]
         self.winner = self.find_winner()
         self.halite = self.load_halite(map_size)
-        self.ship_actions, self.shipyard_actions = self.load_moves(map_size, number_of_players)
+        self.ship_actions, self.shipyard_actions, self.spawn = self.load_moves(map_size, number_of_players)
         self.ship_position, self.cargo, self.shipyard_position = self.load_ship_shipyard_position(map_size)
         total_step = self.cargo.shape[0]
         self.turns_left = np.array([total_step - i for i in range(total_step)])
@@ -64,6 +65,7 @@ class Halite(object):
         for player in last_step:
             player_reward.append(player["reward"])
         return player_reward.index(max(player_reward))
+
     def load_halite(self, map_size: int):
         """
         Load the amount of halite on the map at each turn
@@ -106,6 +108,7 @@ class Halite(object):
         valid_actions = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
         ships_action = []
         shipyards_action = []
+        spawn = []
         # Iterate through each step of the game to get step based information
         for step, content in enumerate(self.replay["steps"]):
             if step == 0:
@@ -117,6 +120,8 @@ class Halite(object):
             # ship action and shipyard action per step
             step_ships_action = np.zeros((map_size, map_size), np.int32)
             step_shipyard_action = np.zeros((map_size, map_size), np.int32)
+            # ZERO if no ship yard spawned new ships
+            spawn.append(0)
 
             # Load ship moves for all active players
             for pid in range(len(content)):
@@ -141,6 +146,8 @@ class Halite(object):
                             shipyard_pos_1d = player_shipyard[ship_shipyard_id]
                             shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
                             step_shipyard_action[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
+                            # update spawn to ONE since new ship spawned
+                            spawn[-1] = 1
                         else:
                             # check it is a valid move for ships
                             assert (move in valid_actions)
@@ -158,7 +165,8 @@ class Halite(object):
 
         ships_action = np.array(ships_action)
         shipyards_action = np.array(shipyards_action)
-        return ships_action, shipyards_action
+        spawn = np.array(spawn)
+        return ships_action, shipyards_action, spawn
 
     def load_ship_shipyard_position(self, map_size):
         """
