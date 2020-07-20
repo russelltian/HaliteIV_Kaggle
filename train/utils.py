@@ -58,7 +58,11 @@ class Halite(object):
         assert(self.replay is not None)
         assert(self.replay["steps"][-1] is not None)
         player_reward = []
-        for player in self.replay["steps"][- 1]:
+        last_step = self.replay["steps"][- 1]
+        first_step = self.replay["steps"][1]
+        # has to be 4 player assume
+        assert(len(last_step) == len(first_step))
+        for player in last_step:
             player_reward.append(player["reward"])
         return player_reward.index(max(player_reward))
 
@@ -91,7 +95,8 @@ class Halite(object):
         assert (halite.shape[0] == total_step - 1)
         assert (halite.shape[1] == map_size)
         assert (halite.shape[2] == map_size)
-        halite = halite/1000  # round it
+        halite = halite/100  # round it
+       # print(halite)
         return halite
 
     def load_moves(self, map_size: int, num_of_players: int):
@@ -165,8 +170,8 @@ class Halite(object):
 
     def load_ship_shipyard_position(self, map_size):
         """
-        TODO: Include 2d shipyard positions
-        Loads all active ships 2D positions for player 0 at each turn
+        Loads all active ships and shipyards 2D positions for all players at each turn,
+        the player of training will be loaded with 2, the rest will be 1
         :return:
         """
         ships_position = []
@@ -196,31 +201,30 @@ class Halite(object):
                 # load player 0's information
                 # TODO: change it to all players
                 assert(self.winner != -1)
-                if player_id == self.winner:
-                    player_observation = observation["players"][player_id]
-                    # Get halite, shipyard, ship information of the player
-                    player_shipyard = player_observation[1]
-                    player_ship = player_observation[2]
-                    # load ship position and halite carry amount
-                    for ship_id, ship_info in player_ship.items():
-                        assert (len(ship_info) == 2)  # ship_info : [pos,cargo]
-                        ship_pos_1d = ship_info[0]
-                        ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
-                        step_ships_position[ship_pos_2d[0]][ship_pos_2d[1]] = 1
-                        step_ship_cargo[ship_pos_2d[0]][ship_pos_2d[1]] = ship_info[1]
-                    ships_position.append(step_ships_position)
-                    ships_cargo.append(step_ship_cargo)
-                    # load shipyard position
-                    for shipyard_id, shipyard_info in player_shipyard.items():
-                        assert(isinstance(shipyard_info, int)) # shipyard_info : pos
-                        shipyard_pos_1d = shipyard_info
-                        shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
-                        step_shipyard_position[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
-                    shipyard_position.append(step_shipyard_position)
+                player_observation = observation["players"][player_id]
+                # Get halite, shipyard, ship information of the player
+                player_shipyard = player_observation[1]
+                player_ship = player_observation[2]
+                # load ship position and halite carry amount
+                for ship_id, ship_info in player_ship.items():
+                    assert (len(ship_info) == 2)  # ship_info : [pos,cargo]
+                    ship_pos_1d = ship_info[0]
+                    ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
+                    step_ships_position[ship_pos_2d[0]][ship_pos_2d[1]] = 2 if player_id == self.winner else 1
+                    step_ship_cargo[ship_pos_2d[0]][ship_pos_2d[1]] = ship_info[1]
+
+                # load shipyard position
+                for shipyard_id, shipyard_info in player_shipyard.items():
+                    assert(isinstance(shipyard_info, int)) # shipyard_info : pos
+                    shipyard_pos_1d = shipyard_info
+                    shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
+                    step_shipyard_position[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 2 if player_id == self.winner else 1
+            shipyard_position.append(step_shipyard_position)
+            ships_position.append(step_ships_position)
+            ships_cargo.append(step_ship_cargo)
         ships_position = np.array(ships_position)
-        ships_cargo = np.array(ships_cargo)/1000
+        ships_cargo = np.array(ships_cargo)/100
         shipyard_position = np.array(shipyard_position)
-        #print(ships_position.shape)
         return ships_position, ships_cargo, shipyard_position
 
     def get_training_data(self, dim=32):

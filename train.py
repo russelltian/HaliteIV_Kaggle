@@ -27,7 +27,7 @@ for f in replay_files:
 queue = [Queue(32)]
 queue_m_sizes = [32]
 
-batch_size = 100
+batch_size = len(replay_files)
 
 
 #exit(0)
@@ -43,8 +43,17 @@ loss_node = tf.get_collection('loss')[0]
 optimizer_node = tf.get_collection('optimizer')[0]
 
 saver = tf.train.Saver(max_to_keep=1)
-path = random.choice(replay_files)
-
+# path = random.choice(replay_files)
+# # Load all training data
+# game = utils.Halite()
+# #path = '1068739.json'
+# game.load_replay(path)
+# game.load_data()
+# print("winner of this game is player: ", game.winner)
+# X_frame, Y_ship, Y_shipyard = game.get_training_data()
+# X_ship = game.get_my_ships()
+# turns_left = game.turns_left
+#assert (turns_left is not None)
 with tf.Session() as sess:
     tf.initializers.global_variables().run()
 
@@ -60,6 +69,7 @@ with tf.Session() as sess:
         spawn = game.spawn
         assert (turns_left is not None)
 
+
         # first batch of parameters X: (halite,ship_pos) Y: ship_moves
         f_batch, m_batch, spawn_batch = [], [], []
         print(step)
@@ -67,10 +77,23 @@ with tf.Session() as sess:
         s_batch = []
         # third batch of parameters: turns_left
         t_batch = []
-        total_size = X_frame.shape[0]
+        #total_size = X_frame.shape[0]
         for i in range(batch_size):
-            rand_num = random.randint(0, total_size-1)
-            frame, move = X_frame[rand_num], Y_ship[rand_num]
+
+            #rand_num = random.randint(0, total_size-1)
+            path = replay_files[i]
+            rand_num = random.randint(1, 398)
+            # Load all training data
+            game = utils.Halite()
+            game.load_replay(path)
+            game.load_data()
+            print("winner of this game is player: ", game.winner)
+            X_frame, Y_ship, Y_shipyard = game.get_training_data()
+            X_ship = game.get_my_ships()
+            turns_left = game.turns_left
+            assert (turns_left is not None)
+            frame, move, generate = X_frame[rand_num], Y_ship[rand_num], Y_shipyard[rand_num]
+
             my_ships = X_ship[rand_num]
             turn_left = turns_left[rand_num].reshape(1)
             generate = spawn[rand_num].reshape(1)
@@ -111,11 +134,12 @@ with tf.Session() as sess:
                      my_ships_node: s_batch,
                      }
 
-        for i in range(200):
+        for i in range(100):
             loss, _ = sess.run([loss_node, optimizer_node], feed_dict=feed_dict)
             print(loss)
     #saver.save(sess, os.path.join("./", 'model_{}.ckpt'.format(step)))
     saver.save(sess, os.path.join("./", 'model.ckpt'))
+    writer = tf.summary.FileWriter('./', sess.graph)
         # val = queue.get()
         # print(val)
 
