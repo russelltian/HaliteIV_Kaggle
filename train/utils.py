@@ -1,13 +1,154 @@
 import json
 import os
 import sys
+from kaggle_environments.envs.halite.helpers import *
 
 import numpy as np
 
 sys.path.append("../")
 from train import geometry
+class Gameplay(object):
+    def __init__(self, obs, config):
+        size = config["size"]
+        self.size = size
+        self.ships = np.zeros((size, size))
+        self.shipyards = np.zeros((size, size))
+        self.board = Board(obs, config)
+        self.me = self.board.current_player.id
 
+    def print_board(self):
+        board = self.board
+        print(board)
+    def reset_board(self, obs, config):
+        # The size of the board must be constant
+        assert(self.size == config.size)
+        size = self.size
+        self.ships = np.zeros((size, size))
+        self.shipyards = np.zeros((size, size))
+        self.board = Board(obs, config)
+        # The new observation must still serve for the same player
+        assert(self.me == self.board.current_player.id)
+    # Converts position from 1D to 2D representation in (left most col, left most row)
+    def get_col_row(self, size: int, pos: int):
+        return pos % size, pos // size
 
+    # convert top left coordinate to (left row, left col)
+    def get_2D_col_row(self, size: int, pos: int):
+        top_left_row = pos // size
+        top_left_col = pos % size
+        return top_left_row, top_left_col
+
+    def test_get_2D_col_row(self, size=21):
+        assert (self.get_2D_col_row(size, 0) == (0, 0))
+        assert (self.get_2D_col_row(size, 10) == (0, 10))
+        assert (self.get_2D_col_row(size, 413) == (19, 14))
+        assert (self.get_2D_col_row(size, 440) == (20, 20))
+
+    def get_to_pos(self, size: int, pos: int, direction: str):
+        col, row = self.get_col_row(size, pos)
+        if direction == "NORTH":
+            return pos - size if pos >= size else size ** 2 - size + col
+        elif direction == "SOUTH":
+            return col if pos + size >= size ** 2 else pos + size
+        elif direction == "EAST":
+            return pos + 1 if col < size - 1 else row * size
+        elif direction == "WEST":
+            return pos - 1 if col > 0 else (row + 1) * size - 1
+
+    def convert_kaggle_2D_to_coordinate_2D(self, size: int, pos: List[int]):
+        """
+        Convert the target position from coordinate with bottom left point as origin to
+        coordinate where the top left point is the origin
+        :param size:
+        :param pos:
+        :return:
+        """
+        assert (len(pos) == 2)
+        row = size - 1 - pos[1]
+        col = pos[0]
+        assert (0 <= row < size)
+        assert (0 <= col < size)
+        return row, col
+
+    def convert_kaggle_2D_to_coordinate_1D(self, size: int, pos: List[int]):
+        """
+        Convert the target position from coordinate with bottom left point as origin to
+        coordinate where the top left point is the origin
+        :param size:
+        :param pos:
+        :return:
+        """
+        assert (len(pos) == 2)
+        row = size - 1 - pos[1]
+        col = pos[0]
+        assert (0 <= row < size)
+        assert (0 <= col < size)
+        return row*size + col
+
+class HaliteV2(object):
+    def __init__(self, path: str):
+        self.replay, self.config = self.load_replay(path)
+        self.total_turns = self.find_total_turns()
+        self.winner_id = self.find_winner()
+        self.game_play_list = []
+        # halite per cell
+        self.halite = []
+        self.ship_actions = []
+        self.shipyard_actions = []
+        self.ship_position = []
+        self.shipyard_position = []
+        self.cargo = []
+        self.turns_left = []
+        self.spawn = []
+
+    def load_replay(self, path: str):
+        """
+                load replay json file from halite website
+                :return:
+                """
+        # check there is a file in the given path
+        assert (os.path.isfile(path))
+        with open(path) as f:
+            replay = json.loads(f.read())
+        # Load configuration
+        config = replay["configuration"]
+        return replay, config
+
+    def find_total_turns(self):
+        assert (self.config is not None)
+        episode_steps = self.config["episodeSteps"]
+        actual_steps = len(self.replay["steps"])
+        assert (actual_steps <= episode_steps)
+        return actual_steps
+
+    def find_winner(self):
+        assert(self.replay is not None)
+        assert(self.replay["steps"][-1] is not None)
+        player_reward = []
+        last_step = self.replay["steps"][- 1]
+        first_step = self.replay["steps"][1]
+        # has to be 4 player assume
+        assert(len(last_step) == len(first_step))
+        for player in last_step:
+            player_reward.append(player["reward"])
+        return player_reward.index(max(player_reward))
+
+    def convert_to_game_play(self, step: int):
+        """
+        Convert a step of game play (observation on the json) to the format that supports by halite helper function
+        :return:
+        """
+        assert(self.replay is not None)
+        assert(self.config is not None)
+        assert(0 < step <= self.total_turns - 1)
+        observation = self.replay["steps"][step - 1][0]["observation"]
+        board = Board(observation, self.config)
+        assert(board.current_player_id == 0)
+        if self.winner_id != 0:
+            return None
+        ### !!!!!!! Currently we only study the game where player 0 is the final winner
+        assert(board.current_player_id == self.winner_id == 0)
+        return Gameplay(observation, self.config)
 class Halite(object):
     """
 
