@@ -7,22 +7,24 @@ import numpy as np
 
 sys.path.append("../")
 
-
+'''
+######################## Gameplay Part ################################################################
+'''
 class Gameplay(object):
     """
-    The base class that supports the agent in real game environment.
-    This class takes the same input as the agent does in real game,
+    This is the base class that supports the agent in real game environment.
+    It takes the same input as the agent does in real game,
     and provisions data processing utilities to convert the data to the format
-    that will be fed into our ML based agent.
-    Further optimization and rework can be done by deriving this class.
+    that will be fed into our later ML based agent.
+    Further optimization and rework can be done on the derived class.
     """
 
     def __init__(self, obs, config):
         self.board = Board(obs, config)
         self.obs = obs
         size = config["size"]
-        self.board_size = size  # Dimension of squared board
-        self.current_player_id = self.board.current_player_id   # your player id in this game
+        self.board_size = size  # Dimension of the SQUARE board
+        self.current_player_id = self.board.current_player_id  # your player id in this game
 
         self.halite_map = np.zeros((size, size), np.float)  # 2D map of halite
         self.my_ships_location = np.zeros((size, size), np.int)  # 2D map of your ships location
@@ -30,9 +32,9 @@ class Gameplay(object):
         self.my_shipyards_location = np.zeros((size, size), np.int)  # 2D map of your shipyards location
 
         # Store information (Note, if this flow got updated, also update reset board function)
-        self.get_ships_information()        # Load ship location, shipyard location, and ship cargo
-        self.get_halite()                   # Load halite
-        self.normalize()                    # Normalization is defined here
+        self.get_ships_information()  # Load ship location, shipyard location, and ship cargo in 2D matrix
+        self.get_halite()  # Load halite in 2D matrix
+        self.normalize()  # Normalization is defined here
 
     def get_ships_information(self):
         """
@@ -44,11 +46,11 @@ class Gameplay(object):
         size = self.board_size
         current_player = board.current_player
         for ship in current_player.ships:
-            position = self.convert_kaggle2D_to_coordinate2D(size, list(ship.position))
+            position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
             self.my_ships_location[position[0]][position[1]] = 1
             self.my_cargo[position[0]][position[1]] = ship.halite
         for shipyard in current_player.shipyards:
-            position = self.convert_kaggle2D_to_coordinate2D(size, list(shipyard.position))
+            position = self.convert_kaggle2D_to_upperleft2D(size, list(shipyard.position))
             self.my_shipyards_location[position[0]][position[1]] = 1
 
     def get_halite(self):
@@ -94,7 +96,7 @@ class Gameplay(object):
         self.get_halite()
         self.normalize()
 
-    def convert_kaggle1D_to_coordinate2D(self, size: int, pos: int):
+    def convert_kaggle1D_to_upperleft2D(self, size: int, pos: int):
         """
          convert 1D position starting from top left of matrix to (row, col) originated at top left of matrix
         :param size:
@@ -105,7 +107,7 @@ class Gameplay(object):
         top_left_col = pos % size
         return top_left_row, top_left_col
 
-    def convert_kaggle2D_to_coordinate2D(self, size: int, pos: List[int]):
+    def convert_kaggle2D_to_upperleft2D(self, size: int, pos: List[int]):
         """
         Convert the target position from coordinate with bottom left point as origin to
         coordinate where the top left point is the origin
@@ -120,7 +122,7 @@ class Gameplay(object):
         assert (0 <= col < size)
         return row, col
 
-    def convert_kaggle2D_to_1D(self, size: int, pos: List[int]):
+    def convert_kaggle2D_to_kaggle1D(self, size: int, pos: List[int]):
         """
         Convert the target position from coordinate with bottom left point as origin to
         coordinate where the top left point is the origin
@@ -134,6 +136,11 @@ class Gameplay(object):
         assert (0 <= row < size)
         assert (0 <= col < size)
         return row * size + col
+
+
+'''
+######################## Training Part ################################################################
+'''
 
 
 class HaliteV2(object):
@@ -251,6 +258,7 @@ class HaliteV2(object):
             top_left_row = pos // size
             top_left_col = pos % size
             return top_left_row, top_left_col
+
         # Iterate through each step of the game to get step based information
         for step, content in enumerate(self.replay["steps"]):
             if step == 0:
@@ -357,6 +365,8 @@ class HaliteV2(object):
 We don't use Version 1 now
 
 '''
+
+
 class Halite(object):
     """
 
