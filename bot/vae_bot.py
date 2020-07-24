@@ -1,9 +1,7 @@
 from kaggle_environments.envs.halite.helpers import *
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.keras import Model, Input
-from tensorflow.python.keras.layers import LSTM, Dense
-
+from train import utils
 
 class Gameplay(object):
     def __init__(self, obs, config):
@@ -139,5 +137,80 @@ class Gameplay(object):
 
         for ship in current_player.ships:
             position = self.convert_kaggle_2D_to_coordinate_1D(this_turn.size, list(ship.position))
+            print(valid_move[np.argmax(result[position])])
+        return actions
+
+
+class VaeBot(utils.Gameplay):
+    """
+    This bot inherits the base class for agent bot,
+    it comes with a set of preprocessed data as well as helper function.
+    For all the new data you added, you can reset them in the reset function,
+    and scale them in the normalize function
+    """
+    def __init__(self, obs, config):
+        super().__init__(obs, config)
+        self.vae = self.load_model()
+
+    def reset_board(self, obs, config):
+        super().reset_board(obs, config)
+
+    def normalize(self):
+        super().normalize()
+
+    def load_model(self):
+        vae = tf.keras.models.load_model('vae.h5')
+        return vae
+
+    def agent(self, obs, config):
+        """Central function for an agent.
+            Relevant properties of arguments:
+            obs:
+                halite: a one-dimensional list of the amount of halite in each board space
+                player: integer, player id, generally 0 or 1
+                players: a list of players, where each is:
+                    [halite, { 'shipyard_uid': position }, { 'ship_uid': [position, halite] }]
+                step: which turn we are on (counting up)
+            Should return a dictionary where the key is the unique identifier string of a ship/shipyard
+            and action is one of "CONVERT", "SPAWN", "NORTH", "SOUTH", "EAST", "WEST"
+            ("SPAWN" being only applicable to shipyards and the others only to ships).
+        """
+        this_turn = self
+        current_player = this_turn.board.current_player
+        size = 21
+        pad_offset = 6
+
+        input_image = np.zeros(
+            (1, 32, 32, 3),
+            dtype='float32')
+
+        # Load current player
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][0] = 1.0
+
+        # Load halite
+        for i in range(size):
+            for j in range(size):
+                input_image[0][i+pad_offset][j+pad_offset][1] = obs.halite[i * size + j]
+
+        # print(halite_map)
+        for shipyard in current_player.shipyards:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
+            input_image[0][position[0]+pad_offset][position[1]+pad_offset][2] = 1.0
+
+        actions = {}
+        valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
+        # Define sampling models
+
+        vae = self.vae
+
+        result = vae.predict(input_image)
+
+        print("result is", result)
+        print("result size", result.shape)
+
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_kaggle1D(this_turn.board_size, list(ship.position))
             print(valid_move[np.argmax(result[position])])
         return actions

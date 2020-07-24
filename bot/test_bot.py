@@ -2,6 +2,7 @@ from kaggle_environments import evaluate, make
 import sys
 from bot import rnn_bot
 from bot import t_bot
+from bot import vae_bot
 env = make("halite", configuration={"size": 21, "episodeSteps": 20}, debug=True)
 trainer = env.train([None, "random"])
 observation = trainer.reset()
@@ -9,7 +10,8 @@ mybot = None
 turn = 0
 while not env.done:
     if not mybot:
-        mybot = rnn_bot.Gameplay(observation, env.configuration)
+        mybot = vae_bot.VaeBot(observation, env.configuration)
+        # mybot = rnn_bot.LSTM_Bot(observation, env.configuration)
     else:
         mybot.reset_board(observation, env.configuration)
     action = mybot.agent(observation, env.configuration)
