@@ -50,7 +50,7 @@ class Gameplay(object):
             self.my_cargo[position[0]][position[1]] = ship.halite
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle_2D_to_coordinate_2D(size, list(shipyard.position))
-            self.my_shipyards_location[position[0]][position[1]] = 2
+            self.my_shipyards_location[position[0]][position[1]] = 1
 
     def get_halite(self):
         """
@@ -60,7 +60,7 @@ class Gameplay(object):
         size = self.board_size
         for i in range(size):
             for j in range(size):
-                self.halite_map[i][j] = self.obs.halite[i * size + j]
+                self.halite_map[i][j] = self.obs['halite'][i * size + j]
 
     def normalize(self):
         """
@@ -69,6 +69,9 @@ class Gameplay(object):
         """
         self.halite_map = self.halite_map/100
         self.my_cargo = self.my_cargo/100
+
+    def pad(self, input_2D_matrix):
+        pass
 
     def print_board(self):
         print(self.board)
@@ -165,15 +168,20 @@ class HaliteV2(object):
         self.total_turns = self.find_total_turns()
         self.winner_id = self.find_winner()
         self.game_play_list = self.build_game_play_list()
-        # halite per cell
-        self.halite = []
-        self.ship_actions = []
-        self.shipyard_actions = []
-        self.ship_position = []
-        self.shipyard_position = []
-        self.cargo = []
+
         self.turns_left = []
         self.spawn = []
+
+        # my ship action is only available in supervise learning training mode
+        self.valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
+        self.my_ship_action_list, self.my_shipyard_action_list, _ = self.build_my_ship_action_list()
+
+        # For training
+        self.ship_position = None
+        self.ship_actions = None
+        self.halite = None
+        self.cargo = None
+        self.shipyard_position = None
 
     def load_replay(self, path: str):
         """
@@ -249,6 +257,112 @@ class HaliteV2(object):
         assert (len(game_play_list) == self.total_turns - 1)
         return game_play_list
 
+    def build_my_ship_action_list(self):
+        assert (self.replay is not None)
+        assert (self.config is not None)
+        map_size = self.config["size"]
+        ships_action = []
+        shipyards_action = []
+        spawn = []
+        # Iterate through each step of the game to get step based information
+        for step, content in enumerate(self.replay["steps"]):
+            if step == 0:
+                continue
+            # Get board observation
+            # observation = content[0]["observation"]
+            observation = self.replay["steps"][step - 1][0]["observation"]
+            # Declare processing information
+            # ship action and shipyard action per step
+            step_ships_action = np.zeros((map_size, map_size), np.int32)
+            step_shipyard_action = np.zeros((map_size, map_size), np.int32)
+            # ZERO if no ship yard spawned new ships
+            spawn.append(0)
+
+            # Load ship moves for all active players
+            for pid in range(len(content)):
+                if "player" not in content[pid]["observation"]:
+                    continue
+                player_id = content[pid]["observation"]["player"]
+
+                # load player 0's information
+                # TODO: change it to all players
+                if player_id == self.winner_id:
+                    player_observation = observation["players"][player_id]
+                    # Get halite, shipyard, ship information of the player
+                    player_shipyard = player_observation[1]
+                    player_ship = player_observation[2]
+                    # load action
+                    for ship_shipyard_id, move in content[pid]["action"].items():
+                        if move == "SPAWN":
+                            # check it is a shipyard
+                            assert (ship_shipyard_id in player_shipyard)
+                            # Get shipyard location
+                            shipyard_pos_1d = player_shipyard[ship_shipyard_id]
+                            shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
+                            step_shipyard_action[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
+                            # update spawn to ONE since new ship spawned
+                            spawn[-1] = 1
+                        else:
+                            # check it is a valid move for ships
+                            assert (move in self.valid_move)
+                            # get information of the ship
+                            ship_info = player_ship[ship_shipyard_id]
+                            assert (len(ship_info) == 2)  # [pos,cargo]
+                            ship_pos_1d = ship_info[0]
+                            ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
+                            step_ships_action[ship_pos_2d[0]][ship_pos_2d[1]] = self.valid_move.index(move)
+                    # print(step_ships_action)
+                    # print(step_shipyard_action)
+                    ships_action.append(step_ships_action)
+                    shipyards_action.append(step_shipyard_action)
+            # Load training features
+
+        ships_action = np.array(ships_action)
+        shipyards_action = np.array(shipyards_action)
+        spawn = np.array(spawn)
+        return ships_action, shipyards_action, spawn
+
+    def build_training_data_for_lstm(self):
+        """
+        The shape is (399, 441, 6) for now
+        :return:
+        """
+        X = []
+        Y = []
+        assert(len(self.game_play_list) == self.total_turns - 1)
+        assert(len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
+        for each_step in self.game_play_list:
+            X.append(each_step.my_ships_location)
+        for each_move in self.my_ship_action_list:
+            Y.append(each_move)
+        X = np.array(X)
+        Y = np.array(Y)
+        return X, Y
+
+    def prepare_data_for_vae(self):
+        """
+        The shape is (399, 441, 6) for now
+        :return:
+        """
+        ship = []
+        halite = []
+        shipyard = []
+        ship_move = []
+        cargo = []
+        assert(len(self.game_play_list) == self.total_turns - 1)
+        assert(len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
+        for each_step in self.game_play_list:
+            ship.append(each_step.my_ships_location)
+            halite.append(each_step.halite_map)
+            shipyard.append(each_step.my_shipyards_location)
+            cargo.append(each_step.my_cargo)
+        for each_move in self.my_ship_action_list:
+            ship_move.append(each_move)
+        self.ship_position = np.array(ship)
+        self.ship_actions = np.array(ship_move)
+        self.halite = np.array(halite)
+        self.cargo = np.array(cargo)
+        self.shipyard_position = np.array(shipyard)
 
 class Halite(object):
     """
