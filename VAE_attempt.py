@@ -170,6 +170,7 @@ if game is None:
 
 random_step = random.randint(1, 398)
 game.prepare_data_for_vae()
+
 X_ship = game.ship_position
 Y_ship = game.ship_actions
 halite_available = game.halite
