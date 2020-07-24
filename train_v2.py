@@ -1,12 +1,9 @@
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, LSTM, Dense
-import numpy as np
-import random
 import os
+import random
 
-from tensorflow.python.keras.layers import GRU
+import numpy as np
+from tensorflow.keras.layers import Input, LSTM, Dense
+from tensorflow.keras.models import Model
 
 from train import utils
 

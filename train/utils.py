@@ -6,7 +6,6 @@ from kaggle_environments.envs.halite.helpers import *
 import numpy as np
 
 sys.path.append("../")
-from train import geometry
 
 
 class Gameplay(object):
@@ -22,18 +21,18 @@ class Gameplay(object):
         self.board = Board(obs, config)
         self.obs = obs
         size = config["size"]
-        self.board_size = size
-        self.current_player_id = self.board.current_player_id
+        self.board_size = size  # Dimension of squared board
+        self.current_player_id = self.board.current_player_id   # your player id in this game
 
         self.halite_map = np.zeros((size, size), np.float)  # 2D map of halite
-        self.my_ships_location = np.zeros((size, size), np.int)  # 2D map of my ships location
-        self.my_cargo = np.zeros((size, size), np.float)  # 2D map of my ships cargo
-        self.my_shipyards_location = np.zeros((size, size), np.int)  # 2D map of my shipyards location
+        self.my_ships_location = np.zeros((size, size), np.int)  # 2D map of your ships location
+        self.my_cargo = np.zeros((size, size), np.float)  # 2D map of your ships cargo
+        self.my_shipyards_location = np.zeros((size, size), np.int)  # 2D map of your shipyards location
 
-        # Store information
-        self.get_ships_information()
-        self.get_halite()
-        self.normalize()
+        # Store information (Note, if this flow got updated, also update reset board function)
+        self.get_ships_information()        # Load ship location, shipyard location, and ship cargo
+        self.get_halite()                   # Load halite
+        self.normalize()                    # Normalization is defined here
 
     def get_ships_information(self):
         """
@@ -45,11 +44,11 @@ class Gameplay(object):
         size = self.board_size
         current_player = board.current_player
         for ship in current_player.ships:
-            position = self.convert_kaggle_2D_to_coordinate_2D(size, list(ship.position))
+            position = self.convert_kaggle2D_to_coordinate2D(size, list(ship.position))
             self.my_ships_location[position[0]][position[1]] = 1
             self.my_cargo[position[0]][position[1]] = ship.halite
         for shipyard in current_player.shipyards:
-            position = self.convert_kaggle_2D_to_coordinate_2D(size, list(shipyard.position))
+            position = self.convert_kaggle2D_to_coordinate2D(size, list(shipyard.position))
             self.my_shipyards_location[position[0]][position[1]] = 1
 
     def get_halite(self):
@@ -67,8 +66,8 @@ class Gameplay(object):
         Normalize based on the need
         :return:
         """
-        self.halite_map = self.halite_map/100
-        self.my_cargo = self.my_cargo/100
+        self.halite_map = self.halite_map / 100
+        self.my_cargo = self.my_cargo / 100
 
     def pad(self, input_2D_matrix):
         pass
@@ -95,36 +94,18 @@ class Gameplay(object):
         self.get_halite()
         self.normalize()
 
-    # Converts position from 1D to 2D representation in (left most col, left most row)
-    def get_col_row(self, size: int, pos: int):
-        return pos % size, pos // size
-
-    # convert top left coordinate to (left row, left col)
-    def get_2D_col_row(self, size: int, pos: int):
+    def convert_kaggle1D_to_coordinate2D(self, size: int, pos: int):
+        """
+         convert 1D position starting from top left of matrix to (row, col) originated at top left of matrix
+        :param size:
+        :param pos:
+        :return:
+        """
         top_left_row = pos // size
         top_left_col = pos % size
         return top_left_row, top_left_col
 
-    def test_get_2D_col_row(self, size=21):
-        total = 0
-        for i in range(size):
-            for j in range(size):
-                assert (self.get_2D_col_row(size, total) == (i, j))
-                total += 1
-        assert (total == size ** 2)
-
-    def get_to_pos(self, size: int, pos: int, direction: str):
-        col, row = self.get_col_row(size, pos)
-        if direction == "NORTH":
-            return pos - size if pos >= size else size ** 2 - size + col
-        elif direction == "SOUTH":
-            return col if pos + size >= size ** 2 else pos + size
-        elif direction == "EAST":
-            return pos + 1 if col < size - 1 else row * size
-        elif direction == "WEST":
-            return pos - 1 if col > 0 else (row + 1) * size - 1
-
-    def convert_kaggle_2D_to_coordinate_2D(self, size: int, pos: List[int]):
+    def convert_kaggle2D_to_coordinate2D(self, size: int, pos: List[int]):
         """
         Convert the target position from coordinate with bottom left point as origin to
         coordinate where the top left point is the origin
@@ -139,7 +120,7 @@ class Gameplay(object):
         assert (0 <= col < size)
         return row, col
 
-    def convert_kaggle_2D_to_coordinate_1D(self, size: int, pos: List[int]):
+    def convert_kaggle2D_to_1D(self, size: int, pos: List[int]):
         """
         Convert the target position from coordinate with bottom left point as origin to
         coordinate where the top left point is the origin
@@ -264,6 +245,12 @@ class HaliteV2(object):
         ships_action = []
         shipyards_action = []
         spawn = []
+
+        # convert top left coordinate to (left row, left col)
+        def get_2D_col_row(size: int, pos: int):
+            top_left_row = pos // size
+            top_left_col = pos % size
+            return top_left_row, top_left_col
         # Iterate through each step of the game to get step based information
         for step, content in enumerate(self.replay["steps"]):
             if step == 0:
@@ -298,7 +285,7 @@ class HaliteV2(object):
                             assert (ship_shipyard_id in player_shipyard)
                             # Get shipyard location
                             shipyard_pos_1d = player_shipyard[ship_shipyard_id]
-                            shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
+                            shipyard_pos_2d = get_2D_col_row(map_size, shipyard_pos_1d)
                             step_shipyard_action[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
                             # update spawn to ONE since new ship spawned
                             spawn[-1] = 1
@@ -309,7 +296,7 @@ class HaliteV2(object):
                             ship_info = player_ship[ship_shipyard_id]
                             assert (len(ship_info) == 2)  # [pos,cargo]
                             ship_pos_1d = ship_info[0]
-                            ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
+                            ship_pos_2d = get_2D_col_row(map_size, ship_pos_1d)
                             step_ships_action[ship_pos_2d[0]][ship_pos_2d[1]] = self.valid_move.index(move)
                     # print(step_ships_action)
                     # print(step_shipyard_action)
@@ -329,8 +316,8 @@ class HaliteV2(object):
         """
         X = []
         Y = []
-        assert(len(self.game_play_list) == self.total_turns - 1)
-        assert(len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
+        assert (len(self.game_play_list) == self.total_turns - 1)
+        assert (len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
         for each_step in self.game_play_list:
             X.append(each_step.my_ships_location)
         for each_move in self.my_ship_action_list:
@@ -349,8 +336,8 @@ class HaliteV2(object):
         shipyard = []
         ship_move = []
         cargo = []
-        assert(len(self.game_play_list) == self.total_turns - 1)
-        assert(len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
+        assert (len(self.game_play_list) == self.total_turns - 1)
+        assert (len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
         for each_step in self.game_play_list:
             ship.append(each_step.my_ships_location)
             halite.append(each_step.halite_map)
@@ -364,6 +351,12 @@ class HaliteV2(object):
         self.cargo = np.array(cargo)
         self.shipyard_position = np.array(shipyard)
 
+
+'''
+########################################################################################################################
+We don't use Version 1 now
+
+'''
 class Halite(object):
     """
 
@@ -382,6 +375,27 @@ class Halite(object):
         self.cargo = []
         self.turns_left = []
         self.spawn = []
+
+    # Converts position from 1D to 2D representation in (left most col, left most row)
+    def get_col_row(self, size: int, pos: int):
+        return pos % size, pos // size
+
+    # convert top left coordinate to (left row, left col)
+    def get_2D_col_row(self, size: int, pos: int):
+        top_left_row = pos // size
+        top_left_col = pos % size
+        return top_left_row, top_left_col
+
+    def get_to_pos(self, size: int, pos: int, direction: str):
+        col, row = self.get_col_row(size, pos)
+        if direction == "NORTH":
+            return pos - size if pos >= size else size ** 2 - size + col
+        elif direction == "SOUTH":
+            return col if pos + size >= size ** 2 else pos + size
+        elif direction == "EAST":
+            return pos + 1 if col < size - 1 else row * size
+        elif direction == "WEST":
+            return pos - 1 if col > 0 else (row + 1) * size - 1
 
     def load_replay(self, path: str):
         """
@@ -457,7 +471,6 @@ class Halite(object):
 
     def load_moves(self, map_size: int, num_of_players: int):
         """
-        TODO: Get to work on players
         Loads the ship actions and shipyard actions for player 0 at each turn
         :return: a numpy 3D array
         """
@@ -486,7 +499,6 @@ class Halite(object):
                 player_id = content[pid]["observation"]["player"]
 
                 # load player 0's information
-                # TODO: change it to all players
                 assert (self.winner != -1)
                 if player_id == self.winner:
                     player_observation = observation["players"][player_id]
@@ -500,7 +512,7 @@ class Halite(object):
                             assert (ship_shipyard_id in player_shipyard)
                             # Get shipyard location
                             shipyard_pos_1d = player_shipyard[ship_shipyard_id]
-                            shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
+                            shipyard_pos_2d = self.get_2D_col_row(map_size, shipyard_pos_1d)
                             step_shipyard_action[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
                             # update spawn to ONE since new ship spawned
                             spawn[-1] = 1
@@ -511,7 +523,7 @@ class Halite(object):
                             ship_info = player_ship[ship_shipyard_id]
                             assert (len(ship_info) == 2)  # [pos,cargo]
                             ship_pos_1d = ship_info[0]
-                            ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
+                            ship_pos_2d = self.get_2D_col_row(map_size, ship_pos_1d)
                             step_ships_action[ship_pos_2d[0]][ship_pos_2d[1]] = valid_actions.index(move)
                     # print(step_ships_action)
                     # print(step_shipyard_action)
@@ -553,7 +565,6 @@ class Halite(object):
                 player_id = content[pid]["observation"]["player"]
 
                 # load player 0's information
-                # TODO: change it to all players
                 assert (self.winner != -1)
                 player_observation = observation["players"][player_id]
                 # Get halite, shipyard, ship information of the player
@@ -563,7 +574,7 @@ class Halite(object):
                 for ship_id, ship_info in player_ship.items():
                     assert (len(ship_info) == 2)  # ship_info : [pos,cargo]
                     ship_pos_1d = ship_info[0]
-                    ship_pos_2d = geometry.get_2D_col_row(map_size, ship_pos_1d)
+                    ship_pos_2d = self.get_2D_col_row(map_size, ship_pos_1d)
                     step_ships_position[ship_pos_2d[0]][ship_pos_2d[1]] = 2 if player_id == self.winner else 1
                     step_ship_cargo[ship_pos_2d[0]][ship_pos_2d[1]] = ship_info[1]
 
@@ -571,7 +582,7 @@ class Halite(object):
                 for shipyard_id, shipyard_info in player_shipyard.items():
                     assert (isinstance(shipyard_info, int))  # shipyard_info : pos
                     shipyard_pos_1d = shipyard_info
-                    shipyard_pos_2d = geometry.get_2D_col_row(map_size, shipyard_pos_1d)
+                    shipyard_pos_2d = self.get_2D_col_row(map_size, shipyard_pos_1d)
                     step_shipyard_position[shipyard_pos_2d[0]][
                         shipyard_pos_2d[1]] = 2 if player_id == self.winner else 1
             shipyard_position.append(step_shipyard_position)
