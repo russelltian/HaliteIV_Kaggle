@@ -52,6 +52,12 @@ class testHalite(unittest.TestCase):
         gameplay = game.convert_to_game_play(2)
         self.assertIsNotNone(gameplay)
 
+    def test_build_gameplay_list(self):
+        file = "replayJson.json"
+        game = utils.HaliteV2(file)
+        self.assertIsNotNone(game.game_play_list)
+        self.assertEqual(game.total_turns - 1, len(game.game_play_list))
+
 if __name__ == '__main__':
     unittest.main()
 

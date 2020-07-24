@@ -159,13 +159,18 @@ epochs = 10  # Number of epochs to train for.
 latent_dim = 21  # Latent dimensionality of the encoding space.
 num_samples = 10000  # Number of samples to train on.
 
-path = replay_files[0]
-# Load all training data
-game = utils.Halite()
-game.load_replay(path)
-game.load_data()
+game = None
+for path in replay_files:
+    game = utils.HaliteV2(path)
+    if game.game_play_list is not None and game.winner_id == 0:
+        break
+if game is None:
+    print("get json")
+    exit(0)
 
 random_step = random.randint(1, 398)
+game.prepare_data_for_vae()
+
 X_ship = game.ship_position
 Y_ship = game.ship_actions
 halite_available = game.halite

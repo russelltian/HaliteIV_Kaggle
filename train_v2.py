@@ -21,19 +21,25 @@ for f in replay_files:
     print(f)
 
 batch_size = 16  # Batch size for training.
-epochs = 1  # Number of epochs to train for.
+epochs = 10  # Number of epochs to train for.
 latent_dim = 32  # Latent dimensionality of the encoding space.
 num_samples = 10000  # Number of samples to train on.
-
-path = replay_files[0]
+game = None
+for path in replay_files:
+    game = utils.HaliteV2(path)
+    if game.game_play_list is not None and game.winner_id == 0:
+        break
+if game is None:
+    print("get json")
+    exit(0)
 # Load all training data
-game = utils.Halite()
-game.load_replay(path)
-game.load_data()
+# game = utils.Halite()
+# game.load_replay(path)
+# game.load_data()
 
 random_step = random.randint(1, 398)
-X_ship = game.ship_position
-Y_ship = game.ship_actions
+X_ship, Y_ship = game.build_training_data_for_lstm()
+
 encoder_input_data = np.zeros(
     (399, 441, 6),
     dtype='float32')
