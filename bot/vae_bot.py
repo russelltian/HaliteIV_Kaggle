@@ -209,16 +209,18 @@ class VaeBot(utils.Gameplay):
         vae = self.vae
 
         result = vae.predict(input_image)
+        print("result", result.shape)
 
-        # print("result is", result)
-        print("result size", result.shape)
-        print("result is", result)
+        real_result = result[0]
+        real_result = real_result[6:27, 6:27]
 
-        # for ship in current_player.ships:
-        #     position = ship.position
-        #     print("position is", position)
-        #     print(result[0][position])
-        #     print(valid_move[np.argmax(result[0][position])])
-        #     if valid_move[np.argmax(result[0][position])] != 'STAY':
-        #         actions[ship.id] = valid_move[np.argmax(result[0][position])]
+        print("result size", real_result.shape)
+        # print("result is", real_result)
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size,list(ship.position))
+            print("position is", position)
+            print(real_result[position])
+            print(valid_move[np.argmin(real_result[position])])
+            if valid_move[np.argmin(real_result[position])] != 'STAY':
+                actions[ship.id] = valid_move[np.argmin(real_result[position])]
         return actions
