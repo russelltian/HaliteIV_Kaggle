@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D
 from tensorflow.keras.layers import Input, Dense, Reshape, Concatenate, Flatten, Lambda, Reshape
 from tensorflow.keras.models import Model
@@ -59,15 +60,19 @@ def get_vae(height, width, batch_size, latent_dim,
     print("eblock_flat", eblock_flat.shape)
     if not is_variational:
         z = Dense(latent_dim)(eblock_flat)
+        print("z shape", z.shape)
     else:
         # sample latent values from a normal distribution
         def sampling(args):
             z_mean, z_log_sigma = args
             epsilon = K.random_normal(shape=(batch_size, latent_dim), mean=0., stddev=1.)
+            print("epsilon shape", epsilon.shape)
             return z_mean + K.exp(z_log_sigma) * epsilon
 
         z_mean = Dense(latent_dim)(eblock_flat)
+        print("z_mean shape", z_mean.shape)
         z_log_sigma = Dense(latent_dim)(eblock_flat)
+        print("z_log_sigma shape", z_log_sigma.shape)
         z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_sigma])
         print("z shape", z.shape)
 
@@ -88,7 +93,8 @@ def get_vae(height, width, batch_size, latent_dim,
         dblock = get_decoder_network(dblock, start_filters * (2 ** i))
 
     print("dblock shape", dblock.shape)
-    output = Conv2D(3, 1, activation='tanh')(dblock)
+    output = Conv2D(6, 1, activation='tanh')(dblock)
+    print("output shape", output.shape)
 
     ## VAE ##
 
@@ -102,15 +108,27 @@ def get_vae(height, width, batch_size, latent_dim,
     else:
         encoder_with_sampling = Model(inputs, z)
         vae_out = decoder(encoder_with_sampling(inputs))
+        print("vae out shape", vae_out.shape, "\n")
+        dupout = vae_out
         vae = Model(inputs, vae_out)
 
     # define the VAE loss as the sum of MSE and KL-divergence loss
-    def vae_loss(x, x_decoded_mean):
-        print("x", x.shape, "\n")
-        print("x decoded mean", x_decoded_mean.shape)
-        mse_loss = K.mean(mse(x, x_decoded_mean), axis=(1, 2)) * height * width
-        kl_loss = - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)
-        return mse_loss + kl_loss
+    def vae_loss(vae_out, dupout):
+        print("x", vae_out.shape)
+        print("x is", vae_out)
+        print("x decoded mean", dupout.shape)
+        print("x decoded mean is", dupout)
+        print("mse is", mse(vae_out, dupout))
+        # mse_loss = K.mean(mse(vae_out, dupout), axis=(1, 2)) * height * width
+        # print("mse_loss shape", mse_loss.shape)
+        # print("z log sigma", K.exp(z_log_sigma))
+        # print("z mean", K.square(z_mean))
+        # print("hi", 1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma))
+        # kl_loss = - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)
+        # print("kl_loss shape", kl_loss.shape)
+        # print("here", kl_loss)
+        # print("whats up")
+        return mse(vae_out, dupout)
 
     if is_variational:
         vae.compile(loss=vae_loss, optimizer=optimizer)
@@ -124,8 +142,8 @@ def get_vae(height, width, batch_size, latent_dim,
 VARIATIONAL = False
 HEIGHT = 32
 WIDTH = 32
-BATCH_SIZE = 21
-LATENT_DIM = 21
+BATCH_SIZE = 40
+LATENT_DIM = 19
 START_FILTERS = 32
 CAPACITY = 1
 CONDITIONING = True
@@ -154,10 +172,6 @@ for r, d, f in os.walk(PATH):
 for f in replay_files:
     print(f)
 
-batch_size = 21  # Batch size for training.
-epochs = 10  # Number of epochs to train for.
-latent_dim = 21  # Latent dimensionality of the encoding space.
-num_samples = 10000  # Number of samples to train on.
 
 game = None
 for path in replay_files:
@@ -168,7 +182,6 @@ if game is None:
     print("get json")
     exit(0)
 
-random_step = random.randint(1, 398)
 game.prepare_data_for_vae()
 
 X_ship = game.ship_position
@@ -177,16 +190,15 @@ halite_available = game.halite
 my_shipyard = game.shipyard_position
 my_cargo = game.cargo
 gen = np.zeros(
-    (399,32, 32, 3), # my ship, halite on map, my shipyard
+    (400, 32, 32, 3), # my ship, halite on map, my shipyard
     dtype='float32')
 gen_val = np.zeros(
-    (399, 32, 32, 1),
+    (400, 32, 32, 6),
     dtype='float32')
 
 pad_offset = 6
 
 for i, (input_text, target_text) in enumerate(zip(X_ship, Y_ship)):
-
     # populate my ship presence no(index 0) or yes(index 1) = 1.
     for t, row in enumerate(input_text):
         for row_indx, item in enumerate(row):
@@ -197,7 +209,7 @@ for i, (input_text, target_text) in enumerate(zip(X_ship, Y_ship)):
         # print("t is", t)
         for row_indx, item in enumerate(row):
             # print("move is ", item, "row index is",  row_indx)
-            gen_val[i, t+pad_offset, row_indx+pad_offset, 0] = item
+            gen_val[i, t+pad_offset, row_indx+pad_offset, int(item)] = 1.
 
 
 for i, halite_map in enumerate(zip(halite_available)):
