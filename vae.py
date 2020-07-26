@@ -1,12 +1,10 @@
 import numpy as np
-import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D
 from tensorflow.keras.layers import Input, Dense, Reshape, Concatenate, Flatten, Lambda, Reshape
 from tensorflow.keras.models import Model
 from tensorflow.keras import backend as K
 from tensorflow.keras.losses import mse
 from tensorflow.keras.optimizers import Adam
-import random
 import os
 from train import utils
 
@@ -36,7 +34,7 @@ def get_vae(height, width, batch_size, latent_dim,
 
     # create layer for input image
     # concatenate image metadata
-    inputs = Input((height, width, 3))
+    inputs = Input((height, width, 4))
     if conditioning_dim > 0:
         condition = Input([conditioning_dim])
         condition_up = Dense(height * width)(condition)
@@ -184,60 +182,73 @@ if game is None:
 
 game.prepare_data_for_vae()
 
-X_ship = game.ship_position
-Y_ship = game.ship_actions
+"""
+Four features as training input:
+    1) halite available
+    2) my ship
+    3) cargo on my ship
+    4) my shipyard
+"""
+training_input = np.zeros(
+    (400, 32, 32, 4),
+    dtype='float32')
+
+my_ship_positions = game.ship_position
+target_ship_actions = game.ship_actions
 halite_available = game.halite
 my_shipyard = game.shipyard_position
 my_cargo = game.cargo
-gen = np.zeros(
-    (400, 32, 32, 3), # my ship, halite on map, my shipyard
-    dtype='float32')
-gen_val = np.zeros(
+
+"""
+Target ship actions:
+"""
+target_action = np.zeros(
     (400, 32, 32, 6),
     dtype='float32')
 
 pad_offset = 6
 
-for i, (input_text, target_text) in enumerate(zip(X_ship, Y_ship)):
-    # populate my ship presence no(index 0) or yes(index 1) = 1.
-    for t, row in enumerate(input_text):
-        for row_indx, item in enumerate(row):
-            # print(count)
-            gen[i, t+pad_offset, row_indx+pad_offset, 0] = item
-
-    for t, row in enumerate(target_text):
-        # print("t is", t)
-        for row_indx, item in enumerate(row):
-            # print("move is ", item, "row index is",  row_indx)
-            gen_val[i, t+pad_offset, row_indx+pad_offset, int(item)] = 1.
-
-
+#  1) halite available
 for i, halite_map in enumerate(zip(halite_available)):
-    # populate my ship presence no(index 0) or yes(index 1) = 1.
     # print("halite_map", halite_map)
-    for t, row in enumerate(halite_map[0]):
+    for row_indx, row in enumerate(halite_map[0]):
         row = np.squeeze(row)
-        # print("row is ", row)
-        for row_indx, item in enumerate(row):
+        for col_indx, item in enumerate(row):
             # print(item)
-            gen[i, t+pad_offset, row_indx+pad_offset, 1] = item
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
 
-for i, shipyard_map in enumerate(zip(my_shipyard)):
-    # populate my shipyard presence no(index 0) or yes(index 1) = 1.
-    for t, row in enumerate(shipyard_map[0]):
-        row = np.squeeze(row)
-        # print("row is ", row)
-        for row_indx, item in enumerate(row):
-            # print(item)
-            gen[i, t+pad_offset, row_indx+pad_offset, 2] = item
+# 2) my ship position
+for i, my_ship_position in enumerate(my_ship_positions):
+    for row_indx, row in enumerate(my_ship_position):
+        for col_indx, item in enumerate(row):
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
 
-print("gen shape", gen.shape)
-print("gen val", gen_val.shape)
+# 3) cargo on my ship
+for i, cargo_map in enumerate(my_cargo):
+    for row_indx, row in enumerate(cargo_map):
+        for col_indx, item in enumerate(row):
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
+
+# 4) my ship yard position
+for i, shipyard_map in enumerate(my_shipyard):
+    for row_indx, row in enumerate(shipyard_map):
+        for col_indx, item in enumerate(row):
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
+
+# target actions
+for i, target_ship_action in enumerate(target_ship_actions):
+    for row_indx, row in enumerate(target_ship_action):
+        for col_indx, item in enumerate(row):
+            target_action[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+
+
+print("training input shape", training_input.shape)
+print("target action shape", target_action.shape)
 
 # train the variational autoencoder
-vae.fit(x=gen, y=gen_val,
-          batch_size=BATCH_SIZE,
-          epochs=10,
-          validation_split=0.2)
+vae.fit(x=training_input, y=target_action,
+        batch_size=BATCH_SIZE,
+        epochs=10,
+        validation_split=0.2)
 
 vae.save('vae.h5')
