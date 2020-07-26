@@ -181,23 +181,26 @@ class VaeBot(utils.Gameplay):
         pad_offset = 6
 
         input_image = np.zeros(
-            (1, 32, 32, 3),
+            (1, 32, 32, 4),
             dtype='float32')
-
-        # Load current player
-        for ship in current_player.ships:
-            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
-            input_image[0][position[0] + pad_offset][position[1] + pad_offset][0] = 1.0
 
         # Load halite
         for i in range(size):
             for j in range(size):
-                input_image[0][i+pad_offset][j+pad_offset][1] = obs.halite[i * size + j]
+                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10
 
-        # print(halite_map)
+        # Load current player and cargo
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
+
+            cargo = self.my_cargo[position[0]][position[1]] * 10
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo
+
+        # ship yard
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
-            input_image[0][position[0]+pad_offset][position[1]+pad_offset][2] = 1.0
+            input_image[0][position[0]+pad_offset][position[1]+pad_offset][3] = 10.0
 
         actions = {}
         valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
@@ -209,12 +212,13 @@ class VaeBot(utils.Gameplay):
 
         # print("result is", result)
         print("result size", result.shape)
+        print("result is", result)
 
-        for ship in current_player.ships:
-            position = ship.position
-            print("position is", position)
-            print(result[0][position])
-            print(valid_move[np.argmax(result[0][position])])
-            if valid_move[np.argmax(result[0][position])] != 'STAY':
-                actions[ship.id] = valid_move[np.argmax(result[0][position])]
+        # for ship in current_player.ships:
+        #     position = ship.position
+        #     print("position is", position)
+        #     print(result[0][position])
+        #     print(valid_move[np.argmax(result[0][position])])
+        #     if valid_move[np.argmax(result[0][position])] != 'STAY':
+        #         actions[ship.id] = valid_move[np.argmax(result[0][position])]
         return actions
