@@ -141,11 +141,11 @@ VARIATIONAL = False
 HEIGHT = 32
 WIDTH = 32
 BATCH_SIZE = 40
-LATENT_DIM = 19
+LATENT_DIM = 100
 START_FILTERS = 32
 CAPACITY = 1
 CONDITIONING = True
-OPTIMIZER = Adam(lr=0.01)
+OPTIMIZER = Adam(lr=0.005)
 
 vae, encoder, decoder = get_vae(is_variational=VARIATIONAL,
                                 height=HEIGHT,
