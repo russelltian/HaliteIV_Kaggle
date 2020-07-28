@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D
 from tensorflow.keras.layers import Input, Dense, Reshape, Concatenate, Flatten, Lambda, Reshape
 from tensorflow.keras.models import Model
@@ -172,83 +173,93 @@ for f in replay_files:
 
 
 game = None
-for path in replay_files:
+datasets = []
+for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
+    print("index", i)
     if game.game_play_list is not None and game.winner_id == 0:
-        break
-if game is None:
-    print("get json")
-    exit(0)
+        print("hi")
+        game.prepare_data_for_vae()
+        """
+        Four features as training input:
+            1) halite available
+            2) my ship
+            3) cargo on my ship
+            4) my shipyard
+        """
+        training_input = np.zeros(
+            (400, 32, 32, 4),
+            dtype='float32')
 
-game.prepare_data_for_vae()
+        my_ship_positions = game.ship_position
+        target_ship_actions = game.ship_actions
+        halite_available = game.halite
+        my_shipyard = game.shipyard_position
+        my_cargo = game.cargo
 
-"""
-Four features as training input:
-    1) halite available
-    2) my ship
-    3) cargo on my ship
-    4) my shipyard
-"""
-training_input = np.zeros(
-    (400, 32, 32, 4),
-    dtype='float32')
+        """
+        Target ship actions:
+        """
+        training_labels = np.zeros(
+            (400, 32, 32, 6),
+            dtype='float32')
 
-my_ship_positions = game.ship_position
-target_ship_actions = game.ship_actions
-halite_available = game.halite
-my_shipyard = game.shipyard_position
-my_cargo = game.cargo
+        pad_offset = 6
 
-"""
-Target ship actions:
-"""
-target_action = np.zeros(
-    (400, 32, 32, 6),
-    dtype='float32')
+        #  1) halite available
+        for i, halite_map in enumerate(zip(halite_available)):
+            # print("halite_map", halite_map)
+            for row_indx, row in enumerate(halite_map[0]):
+                row = np.squeeze(row)
+                for col_indx, item in enumerate(row):
+                    # print(item)
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
 
-pad_offset = 6
+        # 2) my ship position
+        for i, my_ship_position in enumerate(my_ship_positions):
+            for row_indx, row in enumerate(my_ship_position):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
 
-#  1) halite available
-for i, halite_map in enumerate(zip(halite_available)):
-    # print("halite_map", halite_map)
-    for row_indx, row in enumerate(halite_map[0]):
-        row = np.squeeze(row)
-        for col_indx, item in enumerate(row):
-            # print(item)
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
+        # 3) cargo on my ship
+        for i, cargo_map in enumerate(my_cargo):
+            for row_indx, row in enumerate(cargo_map):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
 
-# 2) my ship position
-for i, my_ship_position in enumerate(my_ship_positions):
-    for row_indx, row in enumerate(my_ship_position):
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
+        # 4) my ship yard position
+        for i, shipyard_map in enumerate(my_shipyard):
+            for row_indx, row in enumerate(shipyard_map):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
 
-# 3) cargo on my ship
-for i, cargo_map in enumerate(my_cargo):
-    for row_indx, row in enumerate(cargo_map):
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
+        # target actions
+        for i, target_ship_action in enumerate(target_ship_actions):
+            for row_indx, row in enumerate(target_ship_action):
+                for col_indx, item in enumerate(row):
+                    training_labels[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
 
-# 4) my ship yard position
-for i, shipyard_map in enumerate(my_shipyard):
-    for row_indx, row in enumerate(shipyard_map):
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
+        print("training input shape", training_input.shape)
+        print("target action shape", training_labels.shape)
 
-# target actions
-for i, target_ship_action in enumerate(target_ship_actions):
-    for row_indx, row in enumerate(target_ship_action):
-        for col_indx, item in enumerate(row):
-            target_action[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+        train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_labels))
+
+        print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
+
+        datasets.append(train_dataset)
+
+print(len(datasets))
+
+# if game is None:
+#     print("get json")
+#     exit(0)
 
 
-print("training input shape", training_input.shape)
-print("target action shape", target_action.shape)
 
 # train the variational autoencoder
-vae.fit(x=training_input, y=target_action,
-        batch_size=BATCH_SIZE,
-        epochs=10,
-        validation_split=0.2)
-
-vae.save('vae.h5')
+# vae.fit(x=training_input, y=target_action,
+#         batch_size=BATCH_SIZE,
+#         epochs=10,
+#         validation_split=0.2)
+#
+# vae.save('vae.h5')
