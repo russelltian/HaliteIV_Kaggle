@@ -146,7 +146,7 @@ LATENT_DIM = 19
 START_FILTERS = 32
 CAPACITY = 1
 CONDITIONING = True
-OPTIMIZER = Adam(lr=0.01)
+OPTIMIZER = Adam(lr=0.005)
 
 vae, encoder, decoder = get_vae(is_variational=VARIATIONAL,
                                 height=HEIGHT,
@@ -173,12 +173,11 @@ for f in replay_files:
 
 
 game = None
-datasets = []
+training_datasets = []
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
     if game.game_play_list is not None and game.winner_id == 0:
-        print("hi")
         game.prepare_data_for_vae()
         """
         Four features as training input:
@@ -200,7 +199,7 @@ for i, path in enumerate(replay_files):
         """
         Target ship actions:
         """
-        training_labels = np.zeros(
+        training_label = np.zeros(
             (400, 32, 32, 6),
             dtype='float32')
 
@@ -237,29 +236,35 @@ for i, path in enumerate(replay_files):
         for i, target_ship_action in enumerate(target_ship_actions):
             for row_indx, row in enumerate(target_ship_action):
                 for col_indx, item in enumerate(row):
-                    training_labels[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+                    training_label[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
 
         print("training input shape", training_input.shape)
-        print("target action shape", training_labels.shape)
+        print("target action shape", training_label.shape)
 
-        train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_labels))
+        train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_label))
 
         print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
 
-        datasets.append(train_dataset)
+        training_datasets.append(train_dataset)
 
-print(len(datasets))
+train_dataset = training_datasets[0]
+
+print(train_dataset)
+
+for i in range(1, len(training_datasets)):
+    train_dataset = train_dataset.concatenate((training_datasets[i]))
+
+# print("dataset shape", train_dataset.as_numpy_iterator().shape)
 
 # if game is None:
 #     print("get json")
 #     exit(0)
 
-
+train_dataset = train_dataset.shuffle(1200, reshuffle_each_iteration=True).batch(40)
 
 # train the variational autoencoder
-# vae.fit(x=training_input, y=target_action,
-#         batch_size=BATCH_SIZE,
-#         epochs=10,
-#         validation_split=0.2)
-#
-# vae.save('vae.h5')
+vae.fit(train_dataset,
+        batch_size=BATCH_SIZE,
+        epochs=20)
+
+vae.save('vae.h5')
