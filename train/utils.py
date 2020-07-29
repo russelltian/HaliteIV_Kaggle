@@ -150,11 +150,11 @@ class HaliteV2(object):
     "Gameplay" object that represents single step of the game, all the core data processing is done in Gameplay,
     and this class will fetch and reformat the data within "Gameplay" to make it training ready.
     """
-
-    def __init__(self, path: str):
+    # TODO: currently ignore the winner of the game, just train based on the first player cuz they all good for now
+    def __init__(self, path: str, ignore_winner=True):
         self.replay, self.config = self.load_replay(path)
         self.total_turns = self.find_total_turns()
-        self.winner_id = self.find_winner()
+        self.winner_id = self.find_winner() if not ignore_winner else 0
         self.game_play_list = self.build_game_play_list()
 
         self.turns_left = []
