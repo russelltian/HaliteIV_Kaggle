@@ -235,7 +235,7 @@ class VaeBot(utils.Gameplay):
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
             print("position is", position)
             print(real_result[position])
-            print(valid_move[np.argmax(real_result[position])])
-            if valid_move[np.argmax(real_result[position])] != 'STAY':
-                actions[ship.id] = valid_move[np.argmax(real_result[position])]
+            print(valid_move[np.argmin(real_result[position])])
+            if valid_move[np.argmin(real_result[position])] != 'STAY':
+                actions[ship.id] = valid_move[np.argmin(real_result[position])]
         return actions
