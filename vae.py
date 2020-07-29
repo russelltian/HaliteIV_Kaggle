@@ -260,11 +260,11 @@ for i in range(1, len(training_datasets)):
 #     print("get json")
 #     exit(0)
 
-train_dataset = train_dataset.shuffle(1200, reshuffle_each_iteration=True).batch(40)
+train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
 
 # train the variational autoencoder
 vae.fit(train_dataset,
         batch_size=BATCH_SIZE,
-        epochs=20)
+        epochs=5)
 
 vae.save('vae.h5')
