@@ -177,6 +177,21 @@ class VaeBot(utils.Gameplay):
             and action is one of "CONVERT", "SPAWN", "NORTH", "SOUTH", "EAST", "WEST"
             ("SPAWN" being only applicable to shipyards and the others only to ships).
         """
+        if obs.step == 1:
+            actions = {}
+            this_turn = self
+            current_player = this_turn.board.current_player
+            for ship in current_player.ships:
+                actions[ship.id] = "CONVERT"
+            return actions
+        elif obs.step == 2:
+            actions = {}
+            this_turn = self
+            current_player = this_turn.board.current_player
+            for shipyard in current_player.shipyards:
+                actions[shipyard.id] = 'SPAWN'
+            return actions
+
         this_turn = self
         current_player = this_turn.board.current_player
         size = 21
@@ -189,6 +204,7 @@ class VaeBot(utils.Gameplay):
             (1, 441, 4),
             dtype='float32')
         # Load halite
+
         for i in range(size):
             for j in range(size):
                 input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10
@@ -199,9 +215,10 @@ class VaeBot(utils.Gameplay):
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
             input_signal[0][position[0]*size+position[1]][1] = 10.0
             cargo = self.my_cargo[position[0]][position[1]] * 10
-            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10
             input_signal[0][position[0]*size+position[1]][2] = cargo
-            # ship yard
+        # 4) ship yard
+
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
             input_image[0][position[0]+pad_offset][position[1]+pad_offset][3] = 10.0
@@ -260,4 +277,20 @@ class VaeBot(utils.Gameplay):
             print(valid_move[int(result[position])])
             if valid_move[int(result[position])] != 'STAY':
                 actions[ship.id] = valid_move[int(result[position])]
+
+        result = vae.predict(input_image)
+
+        print("result size", result.shape)
+       #  print("result is", result)
+
+        real_result = result[0]
+        real_result = real_result[pad_offset:pad_offset+size, pad_offset:pad_offset+size, :]
+
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
+            print("position is", position)
+            print(real_result[position])
+            print(valid_move[np.argmin(real_result[position])])
+            if valid_move[np.argmin(real_result[position])] != 'STAY':
+                actions[ship.id] = valid_move[np.argmin(real_result[position])]
         return actions
