@@ -7,6 +7,9 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.losses import mse
 from tensorflow.keras.optimizers import Adam
 import os
+
+from tensorflow.python.keras.layers import GRU, LSTM, TimeDistributed
+from tensorflow.python.keras.models import Sequential
 from train import utils
 
 def get_encoder_network(x, num_filters):
@@ -24,7 +27,6 @@ def get_decoder_network(x, num_filters):
     x = Conv2D(num_filters, 3, activation='relu', padding = 'same', kernel_initializer = 'he_normal')(x)
     x = Conv2D(num_filters, 3, activation='relu', padding = 'same', kernel_initializer = 'he_normal')(x)
     return x
-
 
 # function to create an autoencoder network
 def get_vae(height, width, batch_size, latent_dim,
@@ -85,32 +87,45 @@ def get_vae(height, width, batch_size, latent_dim,
     embedding = Dense(np.prod(shape_spatial), activation='relu')(inputs_embedding)
     embedding = Reshape(eblock.shape.as_list()[1:])(embedding)
     print("embedding shape", embedding.shape)
-
     # duplicate the encoding layers with increasing filters
-    dblock = get_decoder_network(embedding, start_filters * (2 ** nb_capacity))
-    for i in range(nb_capacity - 1, -1, -1):
-        dblock = get_decoder_network(dblock, start_filters * (2 ** i))
-
-    print("dblock shape", dblock.shape)
-    output = Conv2D(6, 1, activation='tanh')(dblock)
-    print("output shape", output.shape)
+    # dblock = get_decoder_network(embedding, start_filters * (2 ** nb_capacity))
+    # for i in range(nb_capacity - 1, -1, -1):
+    #     dblock = get_decoder_network(dblock, start_filters * (2 ** i))
+    #
+    # print("dblock shape", dblock.shape)
+    # output = Conv2D(6, 1, activation='tanh')(dblock)
+    # print("output shape", output.shape)
 
     ## VAE ##
-
     # put encoder, decoder together
-    decoder = Model(inputs_embedding, output)
+    # decoder = Model(inputs_embedding, output)
+    decoder_input = Input(shape=(None, 6))
+    decoder_outputs = GRU(latent_dim, return_sequences=True)(decoder_input, initial_state=z)
+    decoder_outputs = Dense(6, activation='softmax')(decoder_outputs)
+    print("decoder output shape: ", decoder_outputs.shape)
     if conditioning_dim > 0:
         encoder_with_sampling = Model(input=[inputs, condition], output=z)
-        encoder_with_sampling_ext = Model(input=[inputs, condition], output=z_ext)
-        vae_out = decoder(encoder_with_sampling_ext([inputs, condition]))
-        vae = Model(input=[inputs, condition], output=vae_out)
+        # encoder_with_sampling_ext = Model(input=[inputs, condition], output=z_ext)
+        # vae_out = decoder(encoder_with_sampling_ext([inputs, condition]))
+        # vae = Model(input=[inputs, condition], output=vae_out)
     else:
-        encoder_with_sampling = Model(inputs, z)
-        vae_out = decoder(encoder_with_sampling(inputs))
-        print("vae out shape", vae_out.shape, "\n")
-        dupout = vae_out
-        vae = Model(inputs, vae_out)
-
+        vae = Model([inputs, decoder_input], decoder_outputs)
+        #encoder_with_sampling = Model(inputs, z)
+        #vae_out = decoder(encoder_with_sampling(inputs))
+        #vae_out = decoder(encoder_with_sampling(inputs),initial_state=inputs_embedding)
+        # print("vae out shape", vae_out.shape, "\n")
+        # dupout = vae_out
+        #decoder_out = decoder(encoder_with_sampling(inputs))
+        #vae = Model(inputs, encoder_with_sampling)
+        #vae = Model(inputs, vae_out)
+    encoder_model = Model(inputs, z)
+    decoder_state_input_h = Input(shape=(latent_dim,))
+    gru = GRU(latent_dim, return_sequences=True, return_state=True)
+    decoder_outputs, state_h = gru(decoder_input, initial_state=decoder_state_input_h)
+    decoder_outputs = Dense(6, activation='softmax')(decoder_outputs)
+    decoder_model = Model(
+        [decoder_input, decoder_state_input_h],
+        [decoder_outputs, state_h])
     # define the VAE loss as the sum of MSE and KL-divergence loss
     def vae_loss(vae_out, dupout):
         print("x", vae_out.shape)
@@ -133,8 +148,8 @@ def get_vae(height, width, batch_size, latent_dim,
         vae.compile(loss=vae_loss, optimizer=optimizer)
     else:
         vae.compile(loss='mse', optimizer=optimizer)
-
-    return vae, encoder_with_sampling, decoder
+    return vae, encoder_model, decoder_model
+    # return vae, encoder_with_sampling, decoder
 
 
 # hyperparameters
@@ -158,7 +173,7 @@ vae, encoder, decoder = get_vae(is_variational=VARIATIONAL,
                                 nb_capacity=CAPACITY,
                                 optimizer=OPTIMIZER)
 
-
+#model = get_model(height=HEIGHT,width=WIDTH,batch_size=BATCH_SIZE,latent_dim=LATENT_DIM)
 """Data Extraction"""
 
 PATH = 'train/top_replay/'
@@ -178,6 +193,98 @@ for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
     if game.game_play_list is not None and game.winner_id == 0:
+        break
+if game is None:
+    print("get json")
+    exit(0)
+
+game.prepare_data_for_vae()
+
+"""
+Four features as training input:
+    1) halite available
+    2) my ship
+    3) cargo on my ship
+    4) my shipyard
+"""
+training_input = np.zeros(
+    (400, 32, 32, 4),
+    dtype='float32')
+
+my_ship_positions = game.ship_position
+target_ship_actions = game.ship_actions
+halite_available = game.halite
+my_shipyard = game.shipyard_position
+my_cargo = game.cargo
+
+"""
+Target ship actions:
+"""
+target_action = np.zeros(
+    (400, 32, 32, 6),
+    dtype='float32')
+train = np.zeros(
+    (400, 441, 4),
+    dtype='float32')
+pad_offset = 6
+
+#  1) halite available
+for i, halite_map in enumerate(zip(halite_available)):
+    # print("halite_map", halite_map)
+    for row_indx, row in enumerate(halite_map[0]):
+        row = np.squeeze(row)
+        for col_indx, item in enumerate(row):
+            # print(item)
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
+            train[i,row_indx*21+col_indx,0] = item*10
+# 2) my ship position
+for i, my_ship_position in enumerate(my_ship_positions):
+    for row_indx, row in enumerate(my_ship_position):
+        for col_indx, item in enumerate(row):
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
+            train[i, row_indx * 21 + col_indx, 1] = item * 10
+# 3) cargo on my ship
+for i, cargo_map in enumerate(my_cargo):
+    for row_indx, row in enumerate(cargo_map):
+        for col_indx, item in enumerate(row):
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
+            train[i, row_indx * 21 + col_indx, 2] = item * 10
+# 4) my ship yard position
+for i, shipyard_map in enumerate(my_shipyard):
+    for row_indx, row in enumerate(shipyard_map):
+        for col_indx, item in enumerate(row):
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
+            train[i, row_indx * 21 + col_indx, 3] = item * 10
+# target actions
+decoder_input_data = np.zeros(
+    (400, 441, 6),
+    dtype='float32')
+decoder_target_data = np.zeros(
+    (400, 441, 6),
+    dtype='float32')
+for i, target_ship_action in enumerate(target_ship_actions):
+    for row_indx, row in enumerate(target_ship_action):
+        for col_indx, item in enumerate(row):
+            target_action[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+            decoder_input_data[i][row_indx * 21 + col_indx][item] = 1.
+            decoder_target_data[i][row_indx * 21 + col_indx-1][item] = 1.
+decoder_target_data = np.array(decoder_target_data)
+print(decoder_target_data.shape, training_input.shape)
+# print("training input shape", training_input.shape)
+# print("target action shape", target_action.shape)
+
+# train the variational autoencoder
+# vae.fit(x=training_input, y=decoder_target_data,
+#         batch_size=BATCH_SIZE,
+#         epochs=10,
+#         validation_split=0.2)
+vae.fit(x=[training_input, decoder_input_data], y=decoder_target_data,
+        batch_size=BATCH_SIZE,
+        epochs=10,
+        validation_split=0.2)
+vae.save('vae.h5')
+encoder.save('vae_encoder.h5')
+decoder.save('gru_decoder.h5')
         game.prepare_data_for_vae()
         """
         Four features as training input:
