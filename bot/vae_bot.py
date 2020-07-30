@@ -150,7 +150,7 @@ class VaeBot(utils.Gameplay):
     """
     def __init__(self, obs, config):
         super().__init__(obs, config)
-        self.vae = self.load_model()
+        self.vae, self.encoder, self.decoder = self.load_model()
 
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
@@ -160,7 +160,9 @@ class VaeBot(utils.Gameplay):
 
     def load_model(self):
         vae = tf.keras.models.load_model('vae.h5')
-        return vae
+        encoder = tf.keras.models.load_model('vae_encoder.h5')
+        decoder = tf.keras.models.load_model('gru_decoder.h5')
+        return vae, encoder, decoder
 
     def agent(self, obs, config):
         """Central function for an agent.
@@ -183,42 +185,79 @@ class VaeBot(utils.Gameplay):
         input_image = np.zeros(
             (1, 32, 32, 4),
             dtype='float32')
-
+        input_signal = np.zeros(
+            (1, 441, 4),
+            dtype='float32')
         # Load halite
         for i in range(size):
             for j in range(size):
                 input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10
-
+                input_signal[0][i*size+j][0] = obs.halite[i * size + j] * 10
         # Load current player and cargo
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
-
+            input_signal[0][position[0]*size+position[1]][1] = 10.0
             cargo = self.my_cargo[position[0]][position[1]] * 10
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo
-
-        # ship yard
+            input_signal[0][position[0]*size+position[1]][2] = cargo
+            # ship yard
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
             input_image[0][position[0]+pad_offset][position[1]+pad_offset][3] = 10.0
-
+            input_signal[0][position[0]*size+position[1]][3] = 10.0
         actions = {}
         valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
         # Define sampling models
 
         vae = self.vae
+        encoder = self.encoder
+        decoder = self.decoder
 
-        result = vae.predict(input_image)
+        def decode_sequence(input_seq):
+            # Encode the input as state vectors.
+            states_value = encoder.predict(input_seq)
 
-        # print("result is", result)
-        print("result size", result.shape)
+            # Generate empty target sequence of length 1.
+            target_seq = np.zeros((1, 1, 6))
+            # Populate the first character of target sequence with the start character.
+            target_seq[0, 0, 0] = 1.
+
+            # Sampling loop for a batch of sequences
+            # (to simplify, here we assume a batch of size 1).
+            stop_condition = False
+            decoded_sentence = ''
+            while not stop_condition:
+                output_tokens, h = decoder.predict(
+                    [target_seq, states_value])
+
+                # Sample a token
+                sampled_token_index = np.argmax(output_tokens[0, -1, :])
+                sampled_char = str(sampled_token_index)
+                decoded_sentence += sampled_char
+
+                # Exit condition: either hit max length
+                # or find stop character.
+                if (sampled_char == '\n' or
+                        len(decoded_sentence) > 441):
+                    stop_condition = True
+
+                # Update the target sequence (of length 1).
+                target_seq = np.zeros((1, 1, 6))
+                target_seq[0, 0, sampled_token_index] = 1.
+
+                # Update states
+                states_value = h
+
+            return decoded_sentence
+
+        result = decode_sequence(input_image)
         print("result is", result)
 
-        # for ship in current_player.ships:
-        #     position = ship.position
-        #     print("position is", position)
-        #     print(result[0][position])
-        #     print(valid_move[np.argmax(result[0][position])])
-        #     if valid_move[np.argmax(result[0][position])] != 'STAY':
-        #         actions[ship.id] = valid_move[np.argmax(result[0][position])]
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
+            print("position is", position)
+            print(valid_move[int(result[position])])
+            if valid_move[int(result[position])] != 'STAY':
+                actions[ship.id] = valid_move[int(result[position])]
         return actions
