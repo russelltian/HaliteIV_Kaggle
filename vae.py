@@ -1,5 +1,4 @@
 import numpy as np
-import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D
 from tensorflow.keras.layers import Input, Dense, Reshape, Concatenate, Flatten, Lambda, Reshape
 from tensorflow.keras.models import Model
@@ -100,7 +99,8 @@ def get_vae(height, width, batch_size, latent_dim,
     # put encoder, decoder together
     # decoder = Model(inputs_embedding, output)
     decoder_input = Input(shape=(None, 6))
-    decoder_outputs = GRU(latent_dim, return_sequences=True)(decoder_input, initial_state=z)
+    gru = GRU(latent_dim, return_sequences=True, return_state=True)
+    decoder_outputs, _ = gru(decoder_input, initial_state=z)
     decoder_outputs = Dense(6, activation='softmax')(decoder_outputs)
     print("decoder output shape: ", decoder_outputs.shape)
     if conditioning_dim > 0:
@@ -120,7 +120,6 @@ def get_vae(height, width, batch_size, latent_dim,
         #vae = Model(inputs, vae_out)
     encoder_model = Model(inputs, z)
     decoder_state_input_h = Input(shape=(latent_dim,))
-    gru = GRU(latent_dim, return_sequences=True, return_state=True)
     decoder_outputs, state_h = gru(decoder_input, initial_state=decoder_state_input_h)
     decoder_outputs = Dense(6, activation='softmax')(decoder_outputs)
     decoder_model = Model(
@@ -145,9 +144,13 @@ def get_vae(height, width, batch_size, latent_dim,
         return mse(vae_out, dupout)
 
     if is_variational:
-        vae.compile(loss=vae_loss, optimizer=optimizer)
+        #vae.compile(loss=vae_loss, optimizer=optimizer)
+        vae.compile(optimizer = optimizer, loss = 'categorical_crossentropy',
+        metrics = ['accuracy'])
     else:
-        vae.compile(loss='mse', optimizer=optimizer)
+        #vae.compile(loss='mse', optimizer=optimizer)
+        vae.compile(optimizer=optimizer, loss='categorical_crossentropy',
+                    metrics=['accuracy'])
     return vae, encoder_model, decoder_model
     # return vae, encoder_with_sampling, decoder
 
@@ -157,11 +160,11 @@ VARIATIONAL = False
 HEIGHT = 32
 WIDTH = 32
 BATCH_SIZE = 40
-LATENT_DIM = 19
+LATENT_DIM = 3
 START_FILTERS = 32
 CAPACITY = 1
 CONDITIONING = True
-OPTIMIZER = Adam(lr=0.005)
+OPTIMIZER = Adam(lr=0.001)
 
 vae, encoder, decoder = get_vae(is_variational=VARIATIONAL,
                                 height=HEIGHT,
@@ -188,10 +191,8 @@ for f in replay_files:
 
 
 game = None
-training_datasets = []
-for i, path in enumerate(replay_files):
+for path in replay_files:
     game = utils.HaliteV2(path)
-    print("index", i)
     if game.game_play_list is not None and game.winner_id == 0:
         break
 if game is None:
@@ -241,7 +242,7 @@ for i, halite_map in enumerate(zip(halite_available)):
 for i, my_ship_position in enumerate(my_ship_positions):
     for row_indx, row in enumerate(my_ship_position):
         for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
+            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 500
             train[i, row_indx * 21 + col_indx, 1] = item * 10
 # 3) cargo on my ship
 for i, cargo_map in enumerate(my_cargo):
@@ -282,96 +283,51 @@ vae.fit(x=[training_input, decoder_input_data], y=decoder_target_data,
         batch_size=BATCH_SIZE,
         epochs=10,
         validation_split=0.2)
-vae.save('vae.h5')
-encoder.save('vae_encoder.h5')
-decoder.save('gru_decoder.h5')
-        game.prepare_data_for_vae()
-        """
-        Four features as training input:
-            1) halite available
-            2) my ship
-            3) cargo on my ship
-            4) my shipyard
-        """
-        training_input = np.zeros(
-            (400, 32, 32, 4),
-            dtype='float32')
+result = vae.predict([training_input, decoder_input_data])
+for step, i in enumerate(result):
+    for position, j in enumerate(i):
+        if np.argmax(j) != 0:
+            print("at step: ", step, ", item at position ", position, " is ", np.argmax(j))
+encoder.save('bot/vae_encoder.h5')
+decoder.save('bot/vae_decoder.h5')
 
-        my_ship_positions = game.ship_position
-        target_ship_actions = game.ship_actions
-        halite_available = game.halite
-        my_shipyard = game.shipyard_position
-        my_cargo = game.cargo
 
-        """
-        Target ship actions:
-        """
-        training_label = np.zeros(
-            (400, 32, 32, 6),
-            dtype='float32')
+def decode_sequence(input_seq):
+    # Encode the input as state vectors.
+    states_value = encoder.predict(input_seq)
 
-        pad_offset = 6
+    # Generate empty target sequence of length 1.
+    target_seq = np.zeros((1, 1, 6))
+    # Populate the first character of target sequence with the start character.
+    target_seq[0, 0, 0] = 1.
 
-        #  1) halite available
-        for i, halite_map in enumerate(zip(halite_available)):
-            # print("halite_map", halite_map)
-            for row_indx, row in enumerate(halite_map[0]):
-                row = np.squeeze(row)
-                for col_indx, item in enumerate(row):
-                    # print(item)
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
+    # Sampling loop for a batch of sequences
+    # (to simplify, here we assume a batch of size 1).
+    stop_condition = False
+    decoded_sentence = ''
+    while not stop_condition:
+        output_tokens, h = decoder.predict(
+            [target_seq, states_value])
 
-        # 2) my ship position
-        for i, my_ship_position in enumerate(my_ship_positions):
-            for row_indx, row in enumerate(my_ship_position):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
+        # Sample a token
+        sampled_token_index = np.argmax(output_tokens[0, -1, :])
+        sampled_char = str(sampled_token_index)
+        decoded_sentence += sampled_char
 
-        # 3) cargo on my ship
-        for i, cargo_map in enumerate(my_cargo):
-            for row_indx, row in enumerate(cargo_map):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
+        # Exit condition: either hit max length
+        # or find stop character.
+        if (sampled_char == '\n' or
+                len(decoded_sentence) > 441):
+            stop_condition = True
 
-        # 4) my ship yard position
-        for i, shipyard_map in enumerate(my_shipyard):
-            for row_indx, row in enumerate(shipyard_map):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
+        # Update the target sequence (of length 1).
+        target_seq = np.zeros((1, 1, 6))
+        target_seq[0, 0, sampled_token_index] = 1.
 
-        # target actions
-        for i, target_ship_action in enumerate(target_ship_actions):
-            for row_indx, row in enumerate(target_ship_action):
-                for col_indx, item in enumerate(row):
-                    training_label[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+        # Update states
+        states_value = h
 
-        print("training input shape", training_input.shape)
-        print("target action shape", training_label.shape)
-
-        train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_label))
-
-        print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
-
-        training_datasets.append(train_dataset)
-
-train_dataset = training_datasets[0]
-
-print(train_dataset)
-
-for i in range(1, len(training_datasets)):
-    train_dataset = train_dataset.concatenate((training_datasets[i]))
-
-# print("dataset shape", train_dataset.as_numpy_iterator().shape)
-
-# if game is None:
-#     print("get json")
-#     exit(0)
-
-train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
-
-# train the variational autoencoder
-vae.fit(train_dataset,
-        batch_size=BATCH_SIZE,
-        epochs=5)
-
-vae.save('vae.h5')
+    return decoded_sentence
+# for i in range(400):
+#
+#     print(decode_sequence(training_input[i:i+1,:,:,:]))
