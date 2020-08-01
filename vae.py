@@ -7,6 +7,7 @@ from tensorflow.keras.losses import mse
 from tensorflow.keras.optimizers import Adam
 import os
 
+from tensorflow.python.debug.examples.debug_mnist import tf
 from tensorflow.python.keras.layers import GRU
 from train import utils
 
@@ -183,124 +184,148 @@ for f in replay_files:
     print(f)
 
 game = None
-lot_of_game = utils.LoadGame()
-for path in replay_files:
+training_datasets = []
+for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
-    assert(game.game_play_list is not None and game.winner_id == 0)
-    game.prepare_data_for_vae()
-    break
-if game is None:
-    print("get json")
-    exit(0)
+    print("index", i)
+    if game.game_play_list is not None and game.winner_id == 0:
+        game.prepare_data_for_vae()
+        """
+        Four features as training input:
+            1) halite available
+            2) my ship
+            3) cargo on my ship
+            4) my shipyard
+        """
+        training_input = np.zeros(
+            (400, 32, 32, 4),
+            dtype='float32')
 
+        my_ship_positions = game.ship_position
+        target_ship_actions = game.ship_actions
+        halite_available = game.halite
+        my_shipyard = game.shipyard_position
+        my_cargo = game.cargo
 
-"""
-Four features as training input:
-    1) halite available
-    2) my ship
-    3) cargo on my ship
-    4) my shipyard
-"""
-training_input = np.zeros(
-    (400, 32, 32, 4),
-    dtype='float32')
+        """
+        Target ship actions:
+        """
+        training_label = np.zeros(
+            (400, 32, 32, 6),
+            dtype='float32')
 
-my_ship_positions = game.ship_position
-target_ship_actions = game.ship_actions
-halite_available = game.halite
-my_shipyard = game.shipyard_position
-my_cargo = game.cargo
+        pad_offset = 6
 
-"""
-Target ship actions:
-"""
-target_action = np.zeros(
-    (400, 32, 32, 6),
-    dtype='float32')
+        #  1) halite available
+        for i, halite_map in enumerate(zip(halite_available)):
+            # print("halite_map", halite_map)
+            for row_indx, row in enumerate(halite_map[0]):
+                row = np.squeeze(row)
+                for col_indx, item in enumerate(row):
+                    # print(item)
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
 
-pad_offset = 6
+        # 2) my ship position
+        for i, my_ship_position in enumerate(my_ship_positions):
+            for row_indx, row in enumerate(my_ship_position):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
 
-#  1) halite available
-for i, halite_map in enumerate(zip(halite_available)):
-    # print("halite_map", halite_map)
-    for row_indx, row in enumerate(halite_map[0]):
-        row = np.squeeze(row)
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
-# 2) my ship position
-for i, my_ship_position in enumerate(my_ship_positions):
-    for row_indx, row in enumerate(my_ship_position):
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 50
-# 3) cargo on my ship
-for i, cargo_map in enumerate(my_cargo):
-    for row_indx, row in enumerate(cargo_map):
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
-# 4) my ship yard position
-for i, shipyard_map in enumerate(my_shipyard):
-    for row_indx, row in enumerate(shipyard_map):
-        for col_indx, item in enumerate(row):
-            training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
-# Do word embedding
-board_size = game.config["size"]
-vocab_dict = {}
-num_dict = {}
-for i in range(board_size ** 2):
-    vocab_dict[str(i)] = i
-    num_dict[i] = str(i)
-vocab_idx = board_size ** 2
-move_option = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT", "SPAWN", "NO", "(", ")"]
-for option in move_option:
-    vocab_dict[option] = vocab_idx
-    num_dict[vocab_idx] = option
-    vocab_idx += 1
-# target actions
-decoder_input_data = np.zeros(
-    (400, 441, len(vocab_dict)),
-    dtype='float32')
-decoder_target_data = np.zeros(
-    (400, 441, len(vocab_dict)),
-    dtype='float32')
+        # 3) cargo on my ship
+        for i, cargo_map in enumerate(my_cargo):
+            for row_indx, row in enumerate(cargo_map):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
 
-sequence = game.move_sequence
-sequence.append(sequence[-1])
+        # 4) my ship yard position
+        for i, shipyard_map in enumerate(my_shipyard):
+            for row_indx, row in enumerate(shipyard_map):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
 
-# TODO: validate max sequence
-for step, each_sequence in enumerate(sequence):
-    each_sequence_list = each_sequence.split()
-    idx = 0
-    last_word = ""
-    for each_word in each_sequence_list:
-        assert (each_word in vocab_dict)
-        assert (idx < 441)
-        if idx == 0:
-            decoder_input_data[step][idx][-2] = 1.
-            decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
-        else:
+        # target actions
+        for i, target_ship_action in enumerate(target_ship_actions):
+            for row_indx, row in enumerate(target_ship_action):
+                for col_indx, item in enumerate(row):
+                    training_label[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+
+        print("training input shape", training_input.shape)
+
+        # Do word embedding
+        board_size = game.config["size"]
+        vocab_dict = {}
+        num_dict = {}
+        for i in range(board_size ** 2):
+            vocab_dict[str(i)] = i
+            num_dict[i] = str(i)
+        vocab_idx = board_size ** 2
+        move_option = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT", "SPAWN", "NO", "(", ")"]
+        for option in move_option:
+            vocab_dict[option] = vocab_idx
+            num_dict[vocab_idx] = option
+            vocab_idx += 1
+        # target actions
+        decoder_input_data = np.zeros(
+            (400, 441, len(vocab_dict)),
+            dtype='float32')
+        decoder_target_data = np.zeros(
+            (400, 441, len(vocab_dict)),
+            dtype='float32')
+
+        sequence = game.move_sequence
+        sequence.append(sequence[-1])
+        # TODO: validate max sequence
+        for step, each_sequence in enumerate(sequence):
+            each_sequence_list = each_sequence.split()
+            idx = 0
+            last_word = ""
+            for each_word in each_sequence_list:
+                assert (each_word in vocab_dict)
+                assert (idx < 441)
+                if idx == 0:
+                    decoder_input_data[step][idx][-2] = 1.
+                    decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
+                else:
+                    decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
+                    decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
+                idx += 1
+                last_word = each_word
             decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
-            decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
-        idx += 1
-        last_word = each_word
-    decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
-    decoder_target_data[step][idx][-1] = 1.
-# for i, target_ship_action in enumerate(target_ship_actions):
-#     for row_indx, row in enumerate(target_ship_action):
-#         for col_indx, item in enumerate(row):
-#             target_action[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
-#             decoder_input_data[i][row_indx * 21 + col_indx][item] = 1.
-#             decoder_target_data[i][row_indx * 21 + col_indx-1][item] = 1.
-# decoder_target_data = np.array(decoder_target_data)
-# print(decoder_target_data.shape, training_input.shape)
-print("training input shape", training_input.shape)
-print("target action shape", decoder_target_data.shape)
+            decoder_target_data[step][idx][-1] = 1.
+        print("target action shape", decoder_target_data.shape)
+        # data_tensor = tf.convert_to_tensor(decoder_input_data)
+        # data_tensor2 = tf.convert_to_tensor(decoder_target_data)
+        #train_dataset = tf.data.Dataset.from_tensor_slices(([training_input, data_tensor], data_tensor2))
+        train_dataset = [[training_input, decoder_input_data],decoder_input_data]
+        #print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
+
+        training_datasets.append(train_dataset)
+
+train_dataset = training_datasets[0]
+
+train_x = np.array(train_dataset[0][0])
+train_y_1 = np.array(train_dataset[0][1])
+train_y_2 = np.array(train_dataset[1])
+print(train_x.shape,train_y_1.shape,train_y_2.shape)
+for i in range(1, len(training_datasets)):
+    train_dataset = training_datasets[i]
+    #train_dataset = train_dataset.concatenate((training_datasets[i]))
+    train_x = np.append(train_x,train_dataset[0][0],axis=0)
+    train_y_1 = np.append(train_y_1,train_dataset[0][1],axis=0)
+    train_y_2 = np.append(train_y_2, train_dataset[1],axis=0)
+# print("dataset shape", train_dataset.as_numpy_iterator().shape)
+
+# if game is None:
+#     print("get json")
+#     exit(0)
+print(train_x.shape,train_y_1.shape,train_y_2.shape)
+#train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
 
 # train the variational autoencoder
-vae.fit(x=[training_input, decoder_input_data], y=decoder_target_data,
+vae.fit([train_x,train_y_1],train_y_2,
         batch_size=BATCH_SIZE,
         epochs=20,
         validation_split=0.2)
-result = vae.predict([training_input, decoder_input_data])
 # for step, i in enumerate(result):
 #     for position, j in enumerate(i):
 #         if np.argmax(j) != 0:
