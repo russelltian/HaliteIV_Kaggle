@@ -162,15 +162,13 @@ class HaliteV2(object):
 
         # my ship action is only available in supervise learning training mode
         self.valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
-        self.my_ship_action_list, self.my_shipyard_action_list, _ = self.build_my_ship_action_list()
-
+        self.my_ship_action_list_2D, self.my_shipyard_action_list_2D, self.move_sequence = self.build_my_ship_action_list()
         # For training
         self.ship_position = None
         self.ship_actions = None
         self.halite = None
         self.cargo = None
         self.shipyard_position = None
-
     def load_replay(self, path: str):
         """
                 load replay json file from halite website
@@ -246,13 +244,17 @@ class HaliteV2(object):
         return game_play_list
 
     def build_my_ship_action_list(self):
+        """
+        Convert the ship actions to a sequence of string for seq-seq learning
+        :return:
+        """
         assert (self.replay is not None)
         assert (self.config is not None)
         map_size = self.config["size"]
         ships_action = []
         shipyards_action = []
         spawn = []
-
+        moves_sequence = []
         # convert top left coordinate to (left row, left col)
         def get_2D_col_row(size: int, pos: int):
             top_left_row = pos // size
@@ -260,7 +262,7 @@ class HaliteV2(object):
             return top_left_row, top_left_col
 
         # Iterate through each step of the game to get step based information
-        for step, content in enumerate(self.replay["steps"]):
+        for step, board_info_per_step in enumerate(self.replay["steps"]):
             if step == 0:
                 continue
             # Get board observation
@@ -274,10 +276,10 @@ class HaliteV2(object):
             spawn.append(0)
 
             # Load ship moves for all active players
-            for pid in range(len(content)):
-                if "player" not in content[pid]["observation"]:
+            for pid in range(len(board_info_per_step)):
+                if "player" not in board_info_per_step[pid]["observation"]:
                     continue
-                player_id = content[pid]["observation"]["player"]
+                player_id = board_info_per_step[pid]["observation"]["player"]
 
                 # load player 0's information
                 # TODO: change it to all players
@@ -286,8 +288,8 @@ class HaliteV2(object):
                     # Get halite, shipyard, ship information of the player
                     player_shipyard = player_observation[1]
                     player_ship = player_observation[2]
-                    # load action
-                    for ship_shipyard_id, move in content[pid]["action"].items():
+                    # load action for 2D part
+                    for ship_shipyard_id, move in board_info_per_step[pid]["action"].items():
                         if move == "SPAWN":
                             # check it is a shipyard
                             assert (ship_shipyard_id in player_shipyard)
@@ -301,13 +303,47 @@ class HaliteV2(object):
                             # check it is a valid move for ships
                             assert (move in self.valid_move)
                             # get information of the ship
+                            assert(ship_shipyard_id in player_ship)
                             ship_info = player_ship[ship_shipyard_id]
                             assert (len(ship_info) == 2)  # [pos,cargo]
                             ship_pos_1d = ship_info[0]
                             ship_pos_2d = get_2D_col_row(map_size, ship_pos_1d)
                             step_ships_action[ship_pos_2d[0]][ship_pos_2d[1]] = self.valid_move.index(move)
+                    # Store all ship and shipyards action to a sequence of string
+                    sequence = ""
+                    shipyard_id_position = []
+                    ship_id_position = []
+                    ship_shipyard_move = board_info_per_step[pid]["action"]
+                    for each_shipyard_id, each_shipyard_pos in player_shipyard.items():
+                        assert(0 <= each_shipyard_pos < map_size**2)
+                        shipyard_id_position.append([each_shipyard_id, each_shipyard_pos])
+                    # sort shipyard based on location
+                    shipyard_id_position = sorted(shipyard_id_position, key=lambda x: x[1])
+                    for each_shipyard in shipyard_id_position:
+                        # id, position
+                        sequence += str(each_shipyard[1])
+                        if each_shipyard[0] in ship_shipyard_move:
+                            assert (ship_shipyard_move[each_shipyard[0]] == "SPAWN")
+                            sequence += " SPAWN "
+                        else:
+                            sequence += " NO "
+
+                    for each_ship_id, each_ship_info in player_ship.items():
+                        assert(0 <= each_ship_info[0] < map_size**2)
+                        ship_id_position.append([each_ship_id, each_ship_info[0]])
+                    # sort ship based on location
+                    ship_id_position = sorted(ship_id_position, key=lambda x: x[1])
+                    for each_ship in ship_id_position:
+                        # id, position
+                        sequence += str(each_ship[1])
+                        if each_ship[0] in ship_shipyard_move:
+                            sequence += " " + str(ship_shipyard_move[each_ship[0]]) + " "
+                        else:
+                            sequence += " NO "
+                   # print(sequence)
                     # print(step_ships_action)
                     # print(step_shipyard_action)
+                    moves_sequence.append(sequence)
                     ships_action.append(step_ships_action)
                     shipyards_action.append(step_shipyard_action)
             # Load training features
@@ -315,7 +351,7 @@ class HaliteV2(object):
         ships_action = np.array(ships_action)
         shipyards_action = np.array(shipyards_action)
         spawn = np.array(spawn)
-        return ships_action, shipyards_action, spawn
+        return ships_action, shipyards_action, moves_sequence
 
     def build_training_data_for_lstm(self):
         """
@@ -325,10 +361,10 @@ class HaliteV2(object):
         X = []
         Y = []
         assert (len(self.game_play_list) == self.total_turns - 1)
-        assert (len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
+        assert (len(self.my_ship_action_list_2D) == len(self.my_shipyard_action_list_2D) == len(self.game_play_list))
         for each_step in self.game_play_list:
             X.append(each_step.my_ships_location)
-        for each_move in self.my_ship_action_list:
+        for each_move in self.my_ship_action_list_2D:
             Y.append(each_move)
         X = np.array(X)
         Y = np.array(Y)
@@ -345,19 +381,35 @@ class HaliteV2(object):
         ship_move = []
         cargo = []
         assert (len(self.game_play_list) == self.total_turns - 1)
-        assert (len(self.my_ship_action_list) == len(self.my_shipyard_action_list) == len(self.game_play_list))
+        assert (len(self.my_ship_action_list_2D) == len(self.my_shipyard_action_list_2D) == len(self.game_play_list))
         for each_step in self.game_play_list:
             ship.append(each_step.my_ships_location)
             halite.append(each_step.halite_map)
             shipyard.append(each_step.my_shipyards_location)
             cargo.append(each_step.my_cargo)
-        for each_move in self.my_ship_action_list:
+        for each_move in self.my_ship_action_list_2D:
             ship_move.append(each_move)
         self.ship_position = np.array(ship)
         self.ship_actions = np.array(ship_move)
         self.halite = np.array(halite)
         self.cargo = np.array(cargo)
         self.shipyard_position = np.array(shipyard)
+
+
+class LoadGame(object):
+    def __init__(self):
+        self.game = []
+        self.ship_position = None
+        self.ship_actions = None
+        self.halite = None
+        self.cargo = None
+        self.shipyard_position = None
+    def store_game(self, game: HaliteV2):
+        if self.ship_actions:
+            #self.ship_actions.append
+            print("will implement ")
+        else:
+            self.ship_actions = game.ship_actions
 
 
 '''
