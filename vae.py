@@ -1,3 +1,4 @@
+import random
 import numpy as np
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D
 from tensorflow.keras.layers import Input, Dense, Concatenate, Flatten, Lambda, Reshape
@@ -6,7 +7,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.losses import mse
 from tensorflow.keras.optimizers import Adam
 import os
-
+from sys import getsizeof
 from tensorflow.python.debug.examples.debug_mnist import tf
 from tensorflow.python.keras.layers import GRU
 from train import utils
@@ -171,6 +172,133 @@ vae, encoder, decoder = get_vae(is_variational=VARIATIONAL,
                                 nb_capacity=CAPACITY,
                                 optimizer=OPTIMIZER)
 
+# Do word embedding
+board_size = 21
+vocab_dict = {}
+num_dict = {}
+for i in range(board_size ** 2):
+    vocab_dict[str(i)] = i
+    num_dict[i] = str(i)
+vocab_idx = board_size ** 2
+move_option = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT", "SPAWN", "NO", "(", ")"]
+for option in move_option:
+    vocab_dict[option] = vocab_idx
+    num_dict[vocab_idx] = option
+    vocab_idx += 1
+def train_with_large_data():
+    vae, encoder, decoder = get_vae(is_variational=VARIATIONAL,
+                                    height=HEIGHT,
+                                    width=WIDTH,
+                                    batch_size=BATCH_SIZE,
+                                    latent_dim=LATENT_DIM,
+                                    conditioning_dim=0,  # hard code to zero for now
+                                    start_filters=START_FILTERS,
+                                    nb_capacity=CAPACITY,
+                                    optimizer=OPTIMIZER)
+    PATH = 'train/top_replay/'
+    replay_files = []
+    # r=root, d=directories, f = files
+    for r, d, f in os.walk(PATH):
+        for file in f:
+            if '.npz' in file:
+                replay_files.append(os.path.join(r, file))
+    for f in replay_files:
+        print(f)
+    for i in range(100):
+        train_x = np.empty((400,32,32,4))
+        train_y1 = np.empty((400,50,450))
+        train_y2 = np.empty((400,50,450))
+        random_idx = []
+        for j in range(400):
+            random_idx.append([random.randint(0, len(replay_files)-1), random.randint(0,399)])
+        for idx, temp in enumerate(random_idx):
+            data = np.load(replay_files[temp[0]])
+            # Find list of IDs
+            train_x[idx,] = data["encoder_input"][temp[1]]
+            train_y1[idx,] = data["decoder_input"][temp[1]]
+            train_y2[idx,] = data["decoder_output"][temp[1]]
+
+        vae.fit([train_x, train_y1], train_y2,
+                batch_size=400,
+                epochs=5,
+                validation_split=0.2)
+    def decode_sequence(input_seq):
+        # Encode the input as state vectors.
+        states_value = encoder.predict(input_seq)
+
+        # Generate empty target sequence of length 1.
+        target_seq = np.zeros((1, 1, 450))
+        # Populate the first character of target sequence with the start character.
+        target_seq[0, 0, 448] = 1.
+
+        # Sampling loop for a batch of sequences
+        # (to simplify, here we assume a batch of size 1).
+        stop_condition = False
+        decoded_sentence = ''
+        while not stop_condition:
+            output_tokens, h = decoder.predict(
+                [target_seq, states_value])
+
+            # Sample a token
+            sampled_token_index = np.argmax(output_tokens[0, -1, :])
+            sampled_char = num_dict[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    len(decoded_sentence) > 441):
+                stop_condition = True
+
+            # Update the target sequence (of length 1).
+            target_seq = np.zeros((1, 1, 450))
+            target_seq[0, 0, sampled_token_index] = 1.
+
+            # Update states
+            states_value = h
+
+        return decoded_sentence
+
+    def self_decode(input_seq):
+        decoded_sentence = ''
+        # Generate empty target sequence of length 1.
+        target_seq = np.zeros((1, 1, 450))
+        # Populate the first character of target sequence with the start character.
+        target_seq[0, 0, 448] = 1.
+        stop_condition = False
+        for i in range(50):
+
+            # Sampling loop for a batch of sequences
+            # (to simplify, here we assume a batch of size 1).
+            output_tokens = vae.predict([input_seq, target_seq])
+
+            # Sample a token
+            sampled_token_index = np.argmin(output_tokens[0, -1, :])
+            sampled_char = num_dict[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    len(decoded_sentence) > 50):
+                stop_condition = True
+
+            # Update the target sequence (of length 1).
+            temp = np.zeros((1, 1, 450))
+            temp[0, 0, sampled_token_index] = 1.
+            target_seq = np.concatenate([target_seq, temp], axis=1)
+
+        return decoded_sentence
+
+    for i in range(10):
+        print(decode_sequence(train_x[i:i + 1, :, :, :]))
+        # target_seq = np.zeros((1, 1, 450))
+        # Populate the first character of target sequence with the start character.
+    print("end of training ")
+
+#train_with_large_data()
+
+
 """Data Extraction"""
 
 PATH = 'train/top_replay/'
@@ -182,12 +310,14 @@ for r, d, f in os.walk(PATH):
             replay_files.append(os.path.join(r, file))
 for f in replay_files:
     print(f)
-
 game = None
+seq_list = []
 training_datasets = []
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
+    if i == 2:
+        break
     if game.game_play_list is not None and game.winner_id == 0:
         game.prepare_data_for_vae()
         """
@@ -199,7 +329,7 @@ for i, path in enumerate(replay_files):
         """
         training_input = np.zeros(
             (400, 32, 32, 4),
-            dtype='float32')
+            dtype=np.float32)
 
         my_ship_positions = game.ship_position
         target_ship_actions = game.ship_actions
@@ -212,7 +342,7 @@ for i, path in enumerate(replay_files):
         """
         training_label = np.zeros(
             (400, 32, 32, 6),
-            dtype='float32')
+            dtype=np.float32)
 
         pad_offset = 6
 
@@ -266,24 +396,27 @@ for i, path in enumerate(replay_files):
             vocab_idx += 1
         # target actions
         decoder_input_data = np.zeros(
-            (400, 441, len(vocab_dict)),
-            dtype='float32')
+            (400, 50, len(vocab_dict)),
+            dtype=np.float32)
         decoder_target_data = np.zeros(
-            (400, 441, len(vocab_dict)),
-            dtype='float32')
+            (400, 50, len(vocab_dict)),
+            dtype=np.float32)
+        print(getsizeof(training_input)/1000000, getsizeof(decoder_target_data)/1000000)
 
         sequence = game.move_sequence
         sequence.append(sequence[-1])
+        seq_list.append(sequence[-1])
         # TODO: validate max sequence
         for step, each_sequence in enumerate(sequence):
             each_sequence_list = each_sequence.split()
+            seq_list.append(each_sequence)
             idx = 0
             last_word = ""
             for each_word in each_sequence_list:
                 assert (each_word in vocab_dict)
-                assert (idx < 441)
+                assert (idx < 50)
                 if idx == 0:
-                    decoder_input_data[step][idx][-2] = 1.
+                    decoder_input_data[step][idx][448] = 1.
                     decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
                 else:
                     decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
@@ -291,41 +424,68 @@ for i, path in enumerate(replay_files):
                 idx += 1
                 last_word = each_word
             decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
-            decoder_target_data[step][idx][-1] = 1.
+            decoder_target_data[step][idx][449] = 1.
         print("target action shape", decoder_target_data.shape)
         # data_tensor = tf.convert_to_tensor(decoder_input_data)
         # data_tensor2 = tf.convert_to_tensor(decoder_target_data)
-        #train_dataset = tf.data.Dataset.from_tensor_slices(([training_input, data_tensor], data_tensor2))
-        train_dataset = [[training_input, decoder_input_data],decoder_input_data]
+        #train_dataset = tf.data.Dataset.from_tensor_slices(([training_input, decoder_input_data], decoder_target_data))
+        #train_dataset = [[tf.convert_to_tensor(training_input), tf.convert_to_tensor(decoder_input_data)],
+        #                 tf.convert_to_tensor(decoder_input_data)]
+        train_dataset = [[training_input, decoder_input_data],
+                         decoder_input_data]
         #print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
-
+        # print("size of train_dataset is ", getsizeof(training_input)/1000**2, " mb")
         training_datasets.append(train_dataset)
-
+        # print("size of whole data is ", getsizeof(training_datasets[0][1]) / 1000 ** 2, " mb")
+        del decoder_input_data
+        del decoder_target_data
+        del game
 train_dataset = training_datasets[0]
 
-train_x = np.array(train_dataset[0][0])
-train_y_1 = np.array(train_dataset[0][1])
-train_y_2 = np.array(train_dataset[1])
-print(train_x.shape,train_y_1.shape,train_y_2.shape)
-for i in range(1, len(training_datasets)):
-    train_dataset = training_datasets[i]
-    #train_dataset = train_dataset.concatenate((training_datasets[i]))
-    train_x = np.append(train_x,train_dataset[0][0],axis=0)
-    train_y_1 = np.append(train_y_1,train_dataset[0][1],axis=0)
-    train_y_2 = np.append(train_y_2, train_dataset[1],axis=0)
+# train_x = np.array(train_dataset[0][0])
+# train_y_1 = np.array(train_dataset[0][1])
+# train_y_2 = np.array(train_dataset[1])
+# train_x = train_dataset[0][0]
+# train_y_1 = train_dataset[0][1]
+# train_y_2 = train_dataset[1]
+# print(train_x.shape, train_y_1.shape, train_y_2.shape)
+# for i in range(1, len(training_datasets)):
+#     train_dataset = training_datasets[i]
+#     #train_dataset = train_dataset.concatenate((training_datasets[i]))
+#     train_x = np.append(train_x, train_dataset[0][0], axis=0)
+#     train_y_1 = np.append(train_y_1, train_dataset[0][1], axis=0)
+#     train_y_2 = np.append(train_y_2, train_dataset[1], axis=0)
+#     # train_x = tf.concat([train_x,train_dataset[0][0]], axis=0)
+#     # train_y_1 = tf.concat([train_y_1,train_dataset[0][1]], axis=0)
+#     # train_y_2 = tf.concat([train_y_2, train_dataset[1]], axis=0)
+#     print("size of train_x is ", getsizeof(train_x) / 1000 ** 2, " mb")
+#     print("size of train_y_1 is ", getsizeof(train_y_1) / 1000 ** 2, " mb")
+#     print("size of train_y_2 is ", getsizeof(train_y_2) / 1000 ** 2, " mb")
 # print("dataset shape", train_dataset.as_numpy_iterator().shape)
-
+for i in range(30):
+    train_x = np.empty((400, 32, 32, 4))
+    train_y_1 = np.empty((400, 50, 450))
+    train_y_2 = np.empty((400, 50, 450))
+    random_idx = []
+    for j in range(400):
+        random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
+    for idx, temp in enumerate(random_idx):
+        # Find list of IDs
+        training_training = training_datasets[temp[0]]
+        train_x[idx,] = training_training[0][0][temp[1]]
+        train_y_1[idx,] = training_training[0][1][temp[1]]
+        train_y_2[idx,] = training_training[1][temp[1]]
 # if game is None:
 #     print("get json")
 #     exit(0)
-print(train_x.shape,train_y_1.shape,train_y_2.shape)
+    print(train_x.shape,train_y_1.shape,train_y_2.shape)
 #train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
 
 # train the variational autoencoder
-vae.fit([train_x,train_y_1],train_y_2,
-        batch_size=BATCH_SIZE,
-        epochs=20,
-        validation_split=0.2)
+    vae.fit([train_x,train_y_1],train_y_2,
+            batch_size=BATCH_SIZE,
+            epochs=50,
+            validation_split=0.2)
 # for step, i in enumerate(result):
 #     for position, j in enumerate(i):
 #         if np.argmax(j) != 0:
@@ -371,7 +531,41 @@ def decode_sequence(input_seq):
 
     return decoded_sentence
 
+def self_decode(input_seq):
+    decoded_sentence = ''
+    # Generate empty target sequence of length 1.
+    target_seq = np.zeros((1, 1, 450))
+    # Populate the first character of target sequence with the start character.
+    target_seq[0, 0, 448] = 1.
+    stop_condition = False
+    for i in range(50):
 
-for i in range(10):
-    print(decode_sequence(training_input[i:i + 1, :, :, :]))
+        # Sampling loop for a batch of sequences
+        # (to simplify, here we assume a batch of size 1).
+        output_tokens = vae.predict([input_seq, target_seq])
+
+        # Sample a token
+        sampled_token_index = np.argmin(output_tokens[0, -1, :])
+        sampled_char = num_dict[int(sampled_token_index)]
+        decoded_sentence += sampled_char
+        decoded_sentence += " "
+        # Exit condition: either hit max length
+        # or find stop character.
+        if (sampled_char == ')' or
+                len(decoded_sentence) > 50):
+            stop_condition = True
+
+        # Update the target sequence (of length 1).
+        temp = np.zeros((1, 1, 450))
+        temp[0, 0, sampled_token_index] = 1.
+        target_seq = np.concatenate([target_seq, temp], axis=1)
+
+    return decoded_sentence
+
+# for i in range(10):
+#     print(decode_sequence(train_x[i:i + 1, :, :, :]))
+#     #target_seq = np.zeros((1, 1, 450))
+#     print(seq_list[i:i+1])
+#     print(self_decode(train_x[i:i + 1, :, :, :]))
+#     # Populate the first character of target sequence with the start character.
 print("end of training ")

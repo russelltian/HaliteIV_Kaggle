@@ -161,7 +161,7 @@ class VaeBot(utils.Gameplay):
     def load_model(self):
         vae = tf.keras.models.load_model('vae.h5')
         encoder = tf.keras.models.load_model('vae_encoder.h5')
-        decoder = tf.keras.models.load_model('gru_decoder.h5')
+        decoder = tf.keras.models.load_model('vae_decoder.h5')
         return vae, encoder, decoder
 
     def agent(self, obs, config):
@@ -236,7 +236,7 @@ class VaeBot(utils.Gameplay):
             states_value = encoder.predict(input_seq)
 
             # Generate empty target sequence of length 1.
-            target_seq = np.zeros((1, 1, 6))
+            target_seq = np.zeros((1, 1, 450))
             # Populate the first character of target sequence with the start character.
             target_seq[0, 0, 0] = 1.
 
@@ -251,16 +251,16 @@ class VaeBot(utils.Gameplay):
                 # Sample a token
                 sampled_token_index = np.argmax(output_tokens[0, -1, :])
                 sampled_char = str(sampled_token_index)
-                decoded_sentence += sampled_char
+                decoded_sentence += sampled_char + " "
 
                 # Exit condition: either hit max length
                 # or find stop character.
                 if (sampled_char == '\n' or
-                        len(decoded_sentence) > 441):
+                        len(decoded_sentence) > 49):
                     stop_condition = True
 
                 # Update the target sequence (of length 1).
-                target_seq = np.zeros((1, 1, 6))
+                target_seq = np.zeros((1, 1, 450))
                 target_seq[0, 0, sampled_token_index] = 1.
 
                 # Update states
@@ -278,19 +278,4 @@ class VaeBot(utils.Gameplay):
             if valid_move[int(result[position])] != 'STAY':
                 actions[ship.id] = valid_move[int(result[position])]
 
-        result = vae.predict(input_image)
-
-        print("result size", result.shape)
-       #  print("result is", result)
-
-        real_result = result[0]
-        real_result = real_result[pad_offset:pad_offset+size, pad_offset:pad_offset+size, :]
-
-        for ship in current_player.ships:
-            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
-            print("position is", position)
-            print(real_result[position])
-            print(valid_move[np.argmin(real_result[position])])
-            if valid_move[np.argmin(real_result[position])] != 'STAY':
-                actions[ship.id] = valid_move[np.argmin(real_result[position])]
         return actions
