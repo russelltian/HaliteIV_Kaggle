@@ -306,10 +306,48 @@ for i in range(3):
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
     #vae.fit(train_dataset, epochs=10)
     vae.fit([train_x, train_y_1, train_y_2], epochs=10)
+
+def decode_sequence(input_seq):
+    # Encode the input as state vectors.
+    states_value = vae.encoder.predict(input_seq)
+
+    # Generate empty target sequence of length 1.
+    target_seq = np.zeros((1, 1, 450))
+    # Populate the first character of target sequence with the start character.
+    target_seq[0, 0, 448] = 1.
+
+    # Sampling loop for a batch of sequences
+    # (to simplify, here we assume a batch of size 1).
+    stop_condition = False
+    decoded_sentence = ''
+    while not stop_condition:
+        output_tokens, h = vae.decoder.predict(
+            [target_seq, states_value])
+
+        # Sample a token
+        sampled_token_index = np.argmax(output_tokens[0, -1, :])
+        sampled_char = num_dict[int(sampled_token_index)]
+        decoded_sentence += sampled_char
+        decoded_sentence += " "
+        # Exit condition: either hit max length
+        # or find stop character.
+        if (sampled_char == ')' or
+                len(decoded_sentence) > 49):
+            stop_condition = True
+
+        # Update the target sequence (of length 1).
+        target_seq = np.zeros((1, 1, 450))
+        target_seq[0, 0, sampled_token_index] = 1.
+
+        # Update states
+        states_value = h
+
+    return decoded_sentence
 test = np.zeros(
             (1, 32, 32, 4),
             dtype='float32')
-vae.predict(test)
-tf.saved_model.save(vae, 'bot/vae_new/')
+print(decode_sequence(test))
+# vae.predict(test)
+# tf.saved_model.save(vae, 'bot/vae_new/')
 #vae.save('bot/vae_new', save_format="tf")
 print("done")
