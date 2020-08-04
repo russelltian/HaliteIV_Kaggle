@@ -216,32 +216,67 @@ class VAE(keras.Model):
         self.encoder = encoder
         self.decoder = decoder
 
+    def decode_sequence(self, input_seq):
+        # Encode the input as state vectors.
+        z_mean, z_log_var, z = self.encoder(input_seq)
+        states_value = z
+        # Generate empty target sequence of length 1.
+        target_seq = np.zeros((1, 1, 450))
+        # Populate the first character of target sequence with the start character.
+        target_seq[0, 0, 448] = 1.
+
+        # Sampling loop for a batch of sequences
+        # (to simplify, here we assume a batch of size 1).
+        stop_condition = False
+        decoded_sentence = ''
+        while not stop_condition:
+            output_tokens, h = self.decoder(
+                [target_seq, states_value])
+
+            # Sample a token
+            sampled_token_index = np.argmax(output_tokens[0, -1, :])
+            sampled_char = num_dict[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    len(decoded_sentence) > 49):
+                stop_condition = True
+
+            # Update the target sequence (of length 1).
+            target_seq = np.zeros((1, 1, 450))
+            target_seq[0, 0, sampled_token_index] = 1.
+
+            # Update states
+            states_value = h
+        return decoded_sentence
     @tf.function
     # def call(self, inputs, training=False):
     #     z_mean, z_log_var, z = self.encoder(inputs)
     #     reconstruction = self.decoder(z)
     #     return reconstruction
     def call(self, inputs, training=False):
-        z_mean, z_log_var, z = self.encoder(inputs)
-        reconstruction = self.decoder(z)
+        #z_mean, z_log_var, z = self.encoder(inputs)
+        print(inputs)
+        inputs = np.array(inputs)
+        reconstruction = self.decode_sequence(inputs)#self.decoder(z)
         return reconstruction
     def train_step(self, data):
         print("data is", data)
-        y = None
-        x = None
        # if isinstance(data, list):
         print("im here")
-        y = data[0][2]
-        data = data[0][0]
-        x = data[0][1]
+
+        x = data[0][0]
+        y1 = data[0][1]
+        y2 = data[0][2]
         with tf.GradientTape() as tape:
             # print("data shape", data.shape)
             # print("y shape", y.shape)
-            z_mean, z_log_var, z = self.encoder(data)
-            print(data.shape, data[0][1].shape, y.shape)
-            reconstruction, _ = self.decoder([y, z])
+            z_mean, z_log_var, z = self.encoder(x)
+            reconstruction, _ = self.decoder([y1, z])
             reconstruction_loss = tf.reduce_mean(
-                keras.losses.binary_crossentropy(y, reconstruction)
+                keras.losses.binary_crossentropy(y2, reconstruction)
             )
             reconstruction_loss *= 32 * 32
             kl_loss = 1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
@@ -287,7 +322,7 @@ class VAE(keras.Model):
 """
 ## Train the VAE
 """
-for i in range(3):
+for i in range(1):
     train_x = np.empty((400, 32, 32, 4))
     train_y_1 = np.empty((400, 50, 450))
     train_y_2 = np.empty((400, 50, 450))
@@ -305,12 +340,13 @@ for i in range(3):
     vae = VAE(encoder, decoder)
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
     #vae.fit(train_dataset, epochs=10)
-    vae.fit([train_x, train_y_1, train_y_2], epochs=10)
+    vae.fit([train_x, train_y_1, train_y_2], epochs=3)
 
-def decode_sequence(input_seq):
+
+def decode_sequence( input_seq):
     # Encode the input as state vectors.
-    states_value = vae.encoder.predict(input_seq)
-
+    z_mean, z_log_var, z = vae.encoder(input_seq)
+    states_value = z
     # Generate empty target sequence of length 1.
     target_seq = np.zeros((1, 1, 450))
     # Populate the first character of target sequence with the start character.
@@ -321,7 +357,7 @@ def decode_sequence(input_seq):
     stop_condition = False
     decoded_sentence = ''
     while not stop_condition:
-        output_tokens, h = vae.decoder.predict(
+        output_tokens, h = vae.decoder(
             [target_seq, states_value])
 
         # Sample a token
@@ -341,13 +377,12 @@ def decode_sequence(input_seq):
 
         # Update states
         states_value = h
-
     return decoded_sentence
 test = np.zeros(
             (1, 32, 32, 4),
             dtype='float32')
+
 print(decode_sequence(test))
-# vae.predict(test)
-# tf.saved_model.save(vae, 'bot/vae_new/')
+tf.saved_model.save(vae, 'bot/vae_new/')
 #vae.save('bot/vae_new', save_format="tf")
 print("done")

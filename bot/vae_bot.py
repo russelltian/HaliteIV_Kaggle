@@ -150,7 +150,7 @@ class VaeBot(utils.Gameplay):
     """
     def __init__(self, obs, config):
         super().__init__(obs, config)
-        self.vae, self.encoder, self.decoder = self.load_model()
+        #self.vae, self.encoder, self.decoder = self.load_model()
 
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
@@ -227,35 +227,41 @@ class VaeBot(utils.Gameplay):
         valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
         # Define sampling models
 
-        vae = self.vae
-        encoder = self.encoder
-        decoder = self.decoder
-
+        vae = tf.saved_model.load('vae_new')
+        num_dict = {}
+        for i in range(size ** 2):
+            num_dict[i] = str(i)
+        vocab_idx = size ** 2
+        move_option = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT", "SPAWN", "NO", "(", ")"]
+        for option in move_option:
+            num_dict[vocab_idx] = option
+            vocab_idx += 1
         def decode_sequence(input_seq):
             # Encode the input as state vectors.
-            states_value = encoder.predict(input_seq)
-
+            print(input_seq.shape)
+            z_mean, z_log_var, z = vae.encoder(input_seq)
+            states_value = z
             # Generate empty target sequence of length 1.
             target_seq = np.zeros((1, 1, 450))
             # Populate the first character of target sequence with the start character.
-            target_seq[0, 0, 0] = 1.
+            target_seq[0, 0, 448] = 1.
 
             # Sampling loop for a batch of sequences
             # (to simplify, here we assume a batch of size 1).
             stop_condition = False
             decoded_sentence = ''
             while not stop_condition:
-                output_tokens, h = decoder.predict(
+                output_tokens, h = vae.decoder(
                     [target_seq, states_value])
 
                 # Sample a token
                 sampled_token_index = np.argmax(output_tokens[0, -1, :])
-                sampled_char = str(sampled_token_index)
-                decoded_sentence += sampled_char + " "
-
+                sampled_char = num_dict[int(sampled_token_index)]
+                decoded_sentence += sampled_char
+                decoded_sentence += " "
                 # Exit condition: either hit max length
                 # or find stop character.
-                if (sampled_char == '\n' or
+                if (sampled_char == ')' or
                         len(decoded_sentence) > 49):
                     stop_condition = True
 
@@ -265,12 +271,9 @@ class VaeBot(utils.Gameplay):
 
                 # Update states
                 states_value = h
-
             return decoded_sentence
-
         result = decode_sequence(input_image)
-        print("result is", result)
-
+        print(result)
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
             print("position is", position)
