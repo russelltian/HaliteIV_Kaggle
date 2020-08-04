@@ -36,6 +36,9 @@ class Gameplay(object):
         self.get_halite()  # Load halite in 2D matrix
         self.normalize()  # Normalization is defined here
 
+        # opponents ship locations
+        self.opponent_ships_location = np.zeros((size, size), np.int)
+
     def get_ships_information(self):
         """
         Get current player's ship location, shipyard location, and cargo on the ship
@@ -45,6 +48,7 @@ class Gameplay(object):
         board = self.board
         size = self.board_size
         current_player = board.current_player
+        other_players = board.opponents
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
             self.my_ships_location[position[0]][position[1]] = 1
@@ -52,6 +56,10 @@ class Gameplay(object):
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(size, list(shipyard.position))
             self.my_shipyards_location[position[0]][position[1]] = 1
+        for player in other_players:
+            for ship in player.ships:
+                position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
+                self.opponent_ships_location[position[0]][position[1]] = 1
 
     def get_halite(self):
         """
@@ -169,6 +177,8 @@ class HaliteV2(object):
         self.halite = None
         self.cargo = None
         self.shipyard_position = None
+        self.opponent_ship_position = None
+
     def load_replay(self, path: str):
         """
                 load replay json file from halite website
@@ -380,6 +390,7 @@ class HaliteV2(object):
         shipyard = []
         ship_move = []
         cargo = []
+        opponent_ship = []
         assert (len(self.game_play_list) == self.total_turns - 1)
         assert (len(self.my_ship_action_list_2D) == len(self.my_shipyard_action_list_2D) == len(self.game_play_list))
         for each_step in self.game_play_list:
@@ -387,6 +398,7 @@ class HaliteV2(object):
             halite.append(each_step.halite_map)
             shipyard.append(each_step.my_shipyards_location)
             cargo.append(each_step.my_cargo)
+            opponent_ship.append((each_step.opponent_ships_location))
         for each_move in self.my_ship_action_list_2D:
             ship_move.append(each_move)
         self.ship_position = np.array(ship)
@@ -394,7 +406,7 @@ class HaliteV2(object):
         self.halite = np.array(halite)
         self.cargo = np.array(cargo)
         self.shipyard_position = np.array(shipyard)
-
+        self.opponent_ship_position = np.array(opponent_ship)
 
 class LoadGame(object):
     def __init__(self):

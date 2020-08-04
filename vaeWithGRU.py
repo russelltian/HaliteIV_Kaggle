@@ -35,9 +35,10 @@ for i, path in enumerate(replay_files):
             2) my ship
             3) cargo on my ship
             4) my shipyard
+            5) other players' ships
         """
         training_input = np.zeros(
-            (400, 32, 32, 4),
+            (400, 32, 32, 5),
             dtype='float32')
 
         my_ship_positions = game.ship_position
@@ -45,6 +46,7 @@ for i, path in enumerate(replay_files):
         halite_available = game.halite
         my_shipyard = game.shipyard_position
         my_cargo = game.cargo
+        opponent_ship_positions = game.opponent_ship_position
 
         """
         Target ship actions:
@@ -81,6 +83,12 @@ for i, path in enumerate(replay_files):
             for row_indx, row in enumerate(shipyard_map):
                 for col_indx, item in enumerate(row):
                     training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
+
+        # 5) other players' ship
+        for i, opponent_ship_position in enumerate(opponent_ship_positions):
+            for row_indx, row in enumerate(opponent_ship_position):
+                for col_indx, item in enumerate(row):
+                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 4] = item * 10
 
         # target actions
         for i, target_ship_action in enumerate(target_ship_actions):
