@@ -348,7 +348,7 @@ def decode_sequence( input_seq):
     z_mean, z_log_var, z = vae.encoder(input_seq)
     states_value = z
     # Generate empty target sequence of length 1.
-    target_seq = np.zeros((1, 1, 450))
+    target_seq = np.zeros((1, 1, 450), dtype=np.float32)
     # Populate the first character of target sequence with the start character.
     target_seq[0, 0, 448] = 1.
 
@@ -372,7 +372,7 @@ def decode_sequence( input_seq):
             stop_condition = True
 
         # Update the target sequence (of length 1).
-        target_seq = np.zeros((1, 1, 450))
+        target_seq = np.zeros((1, 1, 450), dtype=np.float32)
         target_seq[0, 0, sampled_token_index] = 1.
 
         # Update states

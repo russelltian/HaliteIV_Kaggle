@@ -242,15 +242,16 @@ class VaeBot(utils.Gameplay):
             z_mean, z_log_var, z = vae.encoder(input_seq)
             states_value = z
             # Generate empty target sequence of length 1.
-            target_seq = np.zeros((1, 1, 450))
+            target_seq = np.zeros((1, 1, 450),dtype=np.float32)
             # Populate the first character of target sequence with the start character.
             target_seq[0, 0, 448] = 1.
-
+            #target_seq = np.float32(target_seq)
             # Sampling loop for a batch of sequences
             # (to simplify, here we assume a batch of size 1).
             stop_condition = False
             decoded_sentence = ''
             while not stop_condition:
+                print(decoded_sentence)
                 output_tokens, h = vae.decoder(
                     [target_seq, states_value])
 
@@ -266,7 +267,7 @@ class VaeBot(utils.Gameplay):
                     stop_condition = True
 
                 # Update the target sequence (of length 1).
-                target_seq = np.zeros((1, 1, 450))
+                target_seq = np.zeros((1, 1, 450),dtype=np.float32)
                 target_seq[0, 0, sampled_token_index] = 1.
 
                 # Update states
