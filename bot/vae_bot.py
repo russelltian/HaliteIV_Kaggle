@@ -66,13 +66,13 @@ class VaeBot(utils.Gameplay):
 
         for i in range(size):
             for j in range(size):
-                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10
+                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10/100
         # Load current player and cargo
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
             cargo = self.my_cargo[position[0]][position[1]] * 10
-            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10/100
         # 4) ship yard
 
         for shipyard in current_player.shipyards:
@@ -99,9 +99,10 @@ class VaeBot(utils.Gameplay):
         for option in move_option:
             num_dict[vocab_idx] = option
             vocab_idx += 1
+        valid_data = np.load('hh.npy')
+        print(valid_data.shape)
         def decode_sequence(input_seq):
             # Encode the input as state vectors.
-            print(input_seq.shape)
             z_mean, z_log_var, z = vae.encoder(input_seq)
             states_value = z
             # Generate empty target sequence of length 1.
@@ -170,6 +171,8 @@ class VaeBot(utils.Gameplay):
 
             return decoded_sentence
         result = decode_sequence(input_image)
+        for i in range(10):
+            print(decode_sequence(np.float32(valid_data[i:i + 1, :, :, :])))
         print("with updating state ", result)
         return actions
         for ship in current_player.ships:

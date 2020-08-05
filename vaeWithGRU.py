@@ -36,6 +36,8 @@ game = None
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
+    if i == 2:
+        break
     if game.game_play_list is not None and game.winner_id == 0:
         game.prepare_data_for_vae()
         """
@@ -341,7 +343,7 @@ class VAE(keras.Model):
 valid = None
 validy1 =  None
 validy2 =  None
-for i in range(10):
+for i in range(1):
     print("Training Round : ", i)
     train_x = np.empty((400, 32, 32, FEATURE_MAP_DIMENSION))
     train_y_1 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
@@ -409,9 +411,27 @@ test = np.zeros(
             dtype='float32')
 
 
+
+for i in range(10):
+    print(decode_sequence(valid[i:i + 1, :, :, :]))
+    # print(decode_sequence_fixed_state(valid[i:i + 1, :, :, :]))
+    #
+    # _, _,  z = vae.encoder(valid[i:i + 1, :, :, :])
+    # s1, s2 = '', ''
+    # output_tokens, h = vae.decoder(
+    #     [validy1[i:i + 1, :, :], z])
+    # for j in range(26):
+    #     sampled_token_index = np.argmax(output_tokens[0, j, :])
+    #     s1 += num_dict[sampled_token_index]
+    #     s2 += num_dict[np.argmax(validy2[0, j, :])]
+    # print("pred: ", s1, " actual ", s2)
+vae.predict(valid[i:i + 1, :, :, :])
+np.save('bot/hh.npy', valid)
+tf.saved_model.save(vae, 'bot/vae_new/')
+eav = tf.saved_model.load('bot/vae_new/')
 def decode_sequence_fixed_state(input_seq):
     # Encode the input as state vectors.
-    z_mean, z_log_var, z = vae.encoder(input_seq)
+    z_mean, z_log_var, z = eav.encoder(input_seq)
     states_value = z
     # Generate empty target sequence of length 1.
     target_seq = np.zeros((1, 1, 450), dtype=np.float32)
@@ -423,7 +443,7 @@ def decode_sequence_fixed_state(input_seq):
     stop_condition = False
     decoded_sentence = ''
     while not stop_condition:
-        output_tokens, h = vae.decoder(
+        output_tokens, h = eav.decoder(
             [target_seq, states_value])
 
         # Sample a token
@@ -440,25 +460,10 @@ def decode_sequence_fixed_state(input_seq):
         # Update the target sequence (of length 1).
         target_seq = np.zeros((1, 1, 450), dtype=np.float32)
         target_seq[0, 0, sampled_token_index] = 1.
-
+        states_value = h
     return decoded_sentence
-
 for i in range(10):
-    print(decode_sequence(valid[i:i + 1, :, :, :]))
-    # print(decode_sequence_fixed_state(valid[i:i + 1, :, :, :]))
-    #
-    # _, _,  z = vae.encoder(valid[i:i + 1, :, :, :])
-    # s1, s2 = '', ''
-    # output_tokens, h = vae.decoder(
-    #     [validy1[i:i + 1, :, :], z])
-    # for j in range(26):
-    #     sampled_token_index = np.argmax(output_tokens[0, j, :])
-    #     s1 += num_dict[sampled_token_index]
-    #     s2 += num_dict[np.argmax(validy2[0, j, :])]
-    # print("pred: ", s1, " actual ", s2)
-vae.predict(valid[i:i + 1, :, :, :])
-tf.saved_model.save(vae, 'bot/vae_new/')
-
+    print(decode_sequence_fixed_state(np.float32(valid[i:i + 1, :, :, :])))
 #train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
 
 #vae.save('bot/vae_new', save_format="tf")
