@@ -30,14 +30,16 @@ class Gameplay(object):
         self.my_ships_location = np.zeros((size, size), np.int)  # 2D map of your ships location
         self.my_cargo = np.zeros((size, size), np.float)  # 2D map of your ships cargo
         self.my_shipyards_location = np.zeros((size, size), np.int)  # 2D map of your shipyards location
+        # opponents ship locations
+        self.opponent_ships_location = np.zeros((size, size), np.int)
+
 
         # Store information (Note, if this flow got updated, also update reset board function)
         self.get_ships_information()  # Load ship location, shipyard location, and ship cargo in 2D matrix
         self.get_halite()  # Load halite in 2D matrix
         self.normalize()  # Normalization is defined here
 
-        # opponents ship locations
-        self.opponent_ships_location = np.zeros((size, size), np.int)
+
 
     def get_ships_information(self):
         """
