@@ -26,14 +26,18 @@ for r, d, f in os.walk(PATH):
 for f in replay_files:
     print(f)
 
+
+training_datasets = []
+ONE_HOT_WORD_LENGTH = 450
+MAX_WORD_LENGTH = 50
+latent_dim = 7
+
+
 seq_list = []
 game = None
-training_datasets = []
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
-    if i == 1:
-        break
     if game.game_play_list is not None and game.winner_id == 0:
         game.prepare_data_for_vae()
         """
@@ -111,10 +115,10 @@ for i, path in enumerate(replay_files):
             vocab_idx += 1
         # target actions
         decoder_input_data = np.zeros(
-            (400, 50, len(vocab_dict)),
+            (400, MAX_WORD_LENGTH, len(vocab_dict)),
             dtype=np.float32)
         decoder_target_data = np.zeros(
-            (400, 50, len(vocab_dict)),
+            (400, MAX_WORD_LENGTH, len(vocab_dict)),
             dtype=np.float32)
 
         sequence = game.move_sequence
@@ -122,31 +126,28 @@ for i, path in enumerate(replay_files):
         seq_list.append(sequence[-1])
         # TODO: validate max sequence
         for step, each_sequence in enumerate(sequence):
-            each_sequence_list = each_sequence.split()
+            input_sequence = '( ' + each_sequence
+            output_sequence = each_sequence + ')'
+            input_sequence_list = input_sequence.split()
+            output_sequence_list = output_sequence.split()
             seq_list.append(each_sequence)
-            idx = 0
-            last_word = ""
-            for each_word in each_sequence_list:
-                assert (each_word in vocab_dict)
-                assert (idx < 50)
-                if idx == 49:
+            assert(len(input_sequence_list) == len(output_sequence_list))
+            for word_idx in range(len(input_sequence_list)):
+                input_word = input_sequence_list[word_idx]
+                output_word = output_sequence_list[word_idx]
+                if input_word == '(' or output_word == ')':
+                    print(input_word, output_word)
+                # TODO : increase length of sentence
+                if word_idx == MAX_WORD_LENGTH-1:
                     break
-                if idx == 0:
-                    decoder_input_data[step][idx][448] = 1.
-                    decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
-                else:
-                    decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
-                    decoder_target_data[step][idx][vocab_dict[each_word]] = 1.
-                idx += 1
-                last_word = each_word
-            decoder_input_data[step][idx][vocab_dict[last_word]] = 1.
-            decoder_target_data[step][idx][449] = 1.
+                decoder_input_data[step][word_idx][vocab_dict[input_word]] = 1.
+                decoder_target_data[step][word_idx][vocab_dict[output_word]] = 1.
         print("target action shape", decoder_target_data.shape)
        # train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_label))
 
       # print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
         train_dataset = [[training_input, decoder_input_data],
-                         decoder_input_data]
+                         decoder_target_data]
         training_datasets.append(train_dataset)
 
 train_dataset = training_datasets[0]
@@ -170,7 +171,6 @@ class Sampling(layers.Layer):
 ## Build the encoder
 """
 
-latent_dim = 2
 
 encoder_inputs = keras.Input(shape=(32, 32, 4))
 x = layers.Conv2D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)
@@ -195,11 +195,12 @@ encoder.summary()
 # decoder_outputs = layers.Conv2DTranspose(6, 3, activation="sigmoid", padding="same")(x)
 # decoder = keras.Model(latent_inputs, decoder_outputs, name="decoder")
 # decoder.summary()
-decoder_input = keras.Input(shape=(None, 450))
+
+decoder_input = keras.Input(shape=(None, ONE_HOT_WORD_LENGTH))
 gru = tf.keras.layers.GRU(latent_dim, return_sequences=True, return_state=True)
 decoder_state_input_h = keras.Input(shape=(latent_dim,))
 decoder_outputs, state_h = gru(decoder_input, initial_state=decoder_state_input_h)
-decoder_outputs = Dense(450, activation='softmax')(decoder_outputs)
+decoder_outputs = Dense(ONE_HOT_WORD_LENGTH, activation='softmax')(decoder_outputs)
 print("decoder output shape: ", decoder_outputs.shape)
 decoder = keras.Model(
         [decoder_input, decoder_state_input_h],
@@ -221,7 +222,7 @@ class VAE(keras.Model):
         z_mean, z_log_var, z = self.encoder(input_seq)
         states_value = z
         # Generate empty target sequence of length 1.
-        target_seq = np.zeros((1, 1, 450))
+        target_seq = np.zeros((1, 1, ONE_HOT_WORD_LENGTH))
         # Populate the first character of target sequence with the start character.
         target_seq[0, 0, 448] = 1.
 
@@ -241,11 +242,11 @@ class VAE(keras.Model):
             # Exit condition: either hit max length
             # or find stop character.
             if (sampled_char == ')' or
-                    len(decoded_sentence) > 49):
+                    len(decoded_sentence) > MAX_WORD_LENGTH-1):
                 stop_condition = True
 
             # Update the target sequence (of length 1).
-            target_seq = np.zeros((1, 1, 450))
+            target_seq = np.zeros((1, 1, ONE_HOT_WORD_LENGTH))
             target_seq[0, 0, sampled_token_index] = 1.
 
             # Update states
@@ -263,9 +264,9 @@ class VAE(keras.Model):
         reconstruction = self.decode_sequence(inputs)#self.decoder(z)
         return reconstruction
     def train_step(self, data):
-        print("data is", data)
-       # if isinstance(data, list):
-        print("im here")
+        # print("im here")
+        # print("data is", data)
+        # if isinstance(data, list):
 
         x = data[0][0]
         y1 = data[0][1]
@@ -275,9 +276,11 @@ class VAE(keras.Model):
             # print("y shape", y.shape)
             z_mean, z_log_var, z = self.encoder(x)
             reconstruction, _ = self.decoder([y1, z])
-            reconstruction_loss = tf.reduce_mean(
-                keras.losses.binary_crossentropy(y2, reconstruction)
-            )
+            # reconstruction_loss = tf.reduce_mean(
+            #     keras.losses.categorical_crossentropy(y2, reconstruction)
+            # )
+            reconstruction_loss = keras.losses.categorical_crossentropy(y2, reconstruction)
+            reconstruction_loss = tf.reduce_mean(reconstruction_loss)
             reconstruction_loss *= 32 * 32
             kl_loss = 1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
             kl_loss = tf.reduce_mean(kl_loss)
@@ -322,10 +325,14 @@ class VAE(keras.Model):
 """
 ## Train the VAE
 """
-for i in range(1):
+valid = None
+validy1 =  None
+validy2 =  None
+for i in range(1000):
+    print("Training Round : ", i)
     train_x = np.empty((400, 32, 32, 4))
-    train_y_1 = np.empty((400, 50, 450))
-    train_y_2 = np.empty((400, 50, 450))
+    train_y_1 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
+    train_y_2 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
     random_idx = []
     for j in range(400):
         random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
@@ -336,14 +343,60 @@ for i in range(1):
         train_y_1[idx,] = training_training[0][1][temp[1]]
         train_y_2[idx,] = training_training[1][temp[1]]
 #train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
+    s1, s2 = '', ''
+    for jj in range(26):
+        s1 += num_dict[np.argmax(train_y_1[0, jj, :])]
+        s2 += num_dict[np.argmax(train_y_2[0, jj, :])]
+    print("pred: ", s1, " actual ", s2)
 
     vae = VAE(encoder, decoder)
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
     #vae.fit(train_dataset, epochs=10)
-    vae.fit([train_x, train_y_1, train_y_2], epochs=3)
-
-
+    vae.fit([train_x, train_y_1, train_y_2], epochs=10)
+    valid = train_x[30:40]
+    validy1 = train_y_1[30:40]
+    validy2 = train_y_2[30:40]
 def decode_sequence( input_seq):
+    # Encode the input as state vectors.
+    z_mean, z_log_var, z = vae.encoder(input_seq)
+    states_value = z
+    # Generate empty target sequence of length 1.
+    target_seq = np.zeros((1, 1, ONE_HOT_WORD_LENGTH), dtype=np.float32)
+    # Populate the first character of target sequence with the start character.
+    target_seq[0, 0, 448] = 1.
+
+    # Sampling loop for a batch of sequences
+    # (to simplify, here we assume a batch of size 1).
+    stop_condition = False
+    decoded_sentence = ''
+    while not stop_condition:
+        output_tokens, h = vae.decoder(
+            [target_seq, states_value])
+
+        # Sample a token
+        sampled_token_index = np.argmax(output_tokens[0, -1, :])
+        sampled_char = num_dict[int(sampled_token_index)]
+        decoded_sentence += sampled_char
+        decoded_sentence += " "
+        # Exit condition: either hit max length
+        # or find stop character.
+        if (sampled_char == ')' or
+                len(decoded_sentence) > MAX_WORD_LENGTH-1):
+            stop_condition = True
+
+        # Update the target sequence (of length 1).
+        target_seq = np.zeros((1, 1, ONE_HOT_WORD_LENGTH), dtype=np.float32)
+        target_seq[0, 0, sampled_token_index] = 1.
+
+        # Update states
+        states_value = h
+    return decoded_sentence
+test = np.zeros(
+            (1, 32, 32, 4),
+            dtype='float32')
+
+
+def decode_sequence_fixed_state(input_seq):
     # Encode the input as state vectors.
     z_mean, z_log_var, z = vae.encoder(input_seq)
     states_value = z
@@ -351,7 +404,7 @@ def decode_sequence( input_seq):
     target_seq = np.zeros((1, 1, 450), dtype=np.float32)
     # Populate the first character of target sequence with the start character.
     target_seq[0, 0, 448] = 1.
-
+    # target_seq = np.float32(target_seq)
     # Sampling loop for a batch of sequences
     # (to simplify, here we assume a batch of size 1).
     stop_condition = False
@@ -375,14 +428,22 @@ def decode_sequence( input_seq):
         target_seq = np.zeros((1, 1, 450), dtype=np.float32)
         target_seq[0, 0, sampled_token_index] = 1.
 
-        # Update states
-        states_value = h
     return decoded_sentence
-test = np.zeros(
-            (1, 32, 32, 4),
-            dtype='float32')
 
-print(decode_sequence(test))
+for i in range(10):
+    print(decode_sequence(valid[i:i + 1, :, :, :]))
+    # print(decode_sequence_fixed_state(valid[i:i + 1, :, :, :]))
+    #
+    # _, _,  z = vae.encoder(valid[i:i + 1, :, :, :])
+    # s1, s2 = '', ''
+    # output_tokens, h = vae.decoder(
+    #     [validy1[i:i + 1, :, :], z])
+    # for j in range(26):
+    #     sampled_token_index = np.argmax(output_tokens[0, j, :])
+    #     s1 += num_dict[sampled_token_index]
+    #     s2 += num_dict[np.argmax(validy2[0, j, :])]
+    # print("pred: ", s1, " actual ", s2)
 tf.saved_model.save(vae, 'bot/vae_new/')
+
 #vae.save('bot/vae_new', save_format="tf")
 print("done")
