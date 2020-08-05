@@ -27,8 +27,8 @@ for f in replay_files:
 training_datasets = []
 ONE_HOT_WORD_LENGTH = 450
 MAX_WORD_LENGTH = 50
-latent_dim = 7
-
+latent_dim = 128
+FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 
 seq_list = []
 game = None
@@ -106,8 +106,8 @@ for i, path in enumerate(replay_files):
                 for col_indx, item in enumerate(row):
                     training_label[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
 
-        print("training input shape", training_input.shape)
-        print("target action shape", training_label.shape)
+        #print("training input shape", training_input.shape)
+        #print("target action shape", training_label.shape)
         board_size = game.config["size"]
         vocab_dict = {}
         num_dict = {}
@@ -142,14 +142,14 @@ for i, path in enumerate(replay_files):
             for word_idx in range(len(input_sequence_list)):
                 input_word = input_sequence_list[word_idx]
                 output_word = output_sequence_list[word_idx]
-                if input_word == '(' or output_word == ')':
-                    print(input_word, output_word)
+                # if input_word == '(' or output_word == ')':
+                #     print(input_word, output_word)
                 # TODO : increase length of sentence
                 if word_idx == MAX_WORD_LENGTH-1:
                     break
                 decoder_input_data[step][word_idx][vocab_dict[input_word]] = 1.
                 decoder_target_data[step][word_idx][vocab_dict[output_word]] = 1.
-        print("target action shape", decoder_target_data.shape)
+        #print("target action shape", decoder_target_data.shape)
        # train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_label))
 
       # print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
@@ -158,15 +158,14 @@ for i, path in enumerate(replay_files):
 
         #train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_label))
 
-        print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
+        # print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
 
         training_datasets.append(train_dataset)
 
-train_dataset = training_datasets[0]
+# train_dataset = training_datasets[0]
 
 # for i in range(1, len(training_datasets)):
 #     train_dataset = train_dataset.concatenate((training_datasets[i]))
-print(train_dataset)
 
 
 class Sampling(layers.Layer):
@@ -184,7 +183,7 @@ class Sampling(layers.Layer):
 ## Build the encoder
 """
 
-encoder_inputs = keras.Input(shape=(32, 32, 4))
+encoder_inputs = keras.Input(shape=(32, 32, FEATURE_MAP_DIMENSION))
 x = layers.Conv2D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)
 x = layers.Conv2D(64, 3, activation="relu", strides=2, padding="same")(x)
 x = layers.Flatten()(x)
@@ -342,9 +341,9 @@ class VAE(keras.Model):
 valid = None
 validy1 =  None
 validy2 =  None
-for i in range(1000):
+for i in range(10):
     print("Training Round : ", i)
-    train_x = np.empty((400, 32, 32, 4))
+    train_x = np.empty((400, 32, 32, FEATURE_MAP_DIMENSION))
     train_y_1 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
     train_y_2 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
     random_idx = []
