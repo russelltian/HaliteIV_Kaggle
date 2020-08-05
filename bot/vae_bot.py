@@ -60,7 +60,7 @@ class VaeBot(utils.Gameplay):
         pad_offset = 6
 
         input_image = np.zeros(
-            (1, 32, 32, 4),
+            (1, 32, 32, 5),
             dtype='float32')
         # Load halite
 
@@ -79,6 +79,14 @@ class VaeBot(utils.Gameplay):
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
             input_image[0][position[0]+pad_offset][position[1]+pad_offset][3] = 10.0
         actions = {}
+
+        #Other player ship
+        other_players = self.board.opponents
+        # 5) other players' ship
+        for player in other_players:
+            for ship in player.ships:
+                position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
+                input_image[0][position[0] + pad_offset][position[1] + pad_offset][4] = 1 * 10
         valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
         # Define sampling models
 

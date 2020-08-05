@@ -265,16 +265,16 @@ class VAE(keras.Model):
             states_value = h
         return decoded_sentence
     @tf.function
-    # def call(self, inputs, training=False):
-    #     z_mean, z_log_var, z = self.encoder(inputs)
-    #     reconstruction = self.decoder(z)
-    #     return reconstruction
     def call(self, inputs, training=False):
-        #z_mean, z_log_var, z = self.encoder(inputs)
-        print(inputs)
-        inputs = np.array(inputs)
-        reconstruction = self.decode_sequence(inputs)#self.decoder(z)
-        return reconstruction
+        z_mean, z_log_var, z = self.encoder(inputs)
+        #reconstruction = self.decoder(z)
+        return z
+    # def call(self, inputs, training=False):
+    #     #z_mean, z_log_var, z = self.encoder(inputs)
+    #     print(inputs)
+    #     inputs = np.array(inputs)
+    #     reconstruction = self.decode_sequence(inputs)#self.decoder(z)
+    #     return reconstruction
     def train_step(self, data):
         # print("im here")
         # print("data is", data)
@@ -456,6 +456,7 @@ for i in range(10):
     #     s1 += num_dict[sampled_token_index]
     #     s2 += num_dict[np.argmax(validy2[0, j, :])]
     # print("pred: ", s1, " actual ", s2)
+vae.predict(valid[i:i + 1, :, :, :])
 tf.saved_model.save(vae, 'bot/vae_new/')
 
 #train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
