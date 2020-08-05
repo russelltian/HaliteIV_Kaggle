@@ -56,6 +56,7 @@ class Gameplay(object):
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(size, list(shipyard.position))
             self.my_shipyards_location[position[0]][position[1]] = 1
+
         for player in other_players:
             for ship in player.ships:
                 position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
