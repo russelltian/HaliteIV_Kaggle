@@ -13,12 +13,15 @@ class VaeBot(utils.Gameplay):
     def __init__(self, obs, config):
         super().__init__(obs, config)
         #self.vae, self.encoder, self.decoder = self.load_model()
-
+        self.vae_encoder_input_image = self.prepare_encoder_input()
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
 
     def normalize(self):
-        super().normalize()
+        """
+        :return:
+        """
+        pass
 
     def load_model(self):
         vae = tf.keras.models.load_model('vae.h5')
@@ -26,6 +29,56 @@ class VaeBot(utils.Gameplay):
         decoder = tf.keras.models.load_model('vae_decoder.h5')
         return vae, encoder, decoder
 
+    def prepare_encoder_input(self):
+
+        """
+        Currently, we have 5 features
+        Four features as training input:
+            1) halite available
+            2) my ship
+            3) cargo on my ship
+            4) my shipyard
+            5) other players' ships
+        """
+
+        this_turn = self
+        current_player = this_turn.board.current_player
+
+        size = 21
+        pad_offset = 6
+        num_of_encoder_features = 5
+        obs = self.obs
+        input_image = np.zeros(
+            (1, 32, 32, num_of_encoder_features),
+            dtype='float32')
+
+
+        # Load halite
+        for i in range(size):
+            for j in range(size):
+                input_image[0][i + pad_offset][j + pad_offset][0] = obs["halite"][i * size + j] * 10 / 100
+        # Load current player and cargo
+        for ship in current_player.ships:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
+            cargo = self.my_cargo[position[0]][position[1]] * 10
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10 / 100
+        # 4) ship yard
+
+        for shipyard in current_player.shipyards:
+            position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][3] = 10.0
+        actions = {}
+
+        # Other player ship
+        other_players = self.board.opponents
+        # 5) other players' ship
+        for player in other_players:
+            for ship in player.ships:
+                position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
+                input_image[0][position[0] + pad_offset][position[1] + pad_offset][4] = 1 * 10
+        return input_image
+        # Define sampling models
     def agent(self, obs, config):
         """Central function for an agent.
             Relevant properties of arguments:
@@ -74,6 +127,7 @@ class VaeBot(utils.Gameplay):
         for i in range(size):
             for j in range(size):
                 input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] / 10
+
         # Load current player and cargo
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
@@ -98,106 +152,13 @@ class VaeBot(utils.Gameplay):
         # Define sampling models
 
         vae = tf.saved_model.load('vae_new')
-        num_dict = {}
-        for i in range(size ** 2):
-            num_dict[i] = str(i)
-        vocab_idx = size ** 2
-        move_option = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT", "SPAWN", "NO", "(", ")"]
-        for option in move_option:
-            num_dict[vocab_idx] = option
-            vocab_idx += 1
-        def decode_sequence(input_seq):
-            # Encode the input as state vectors.
 
-            z_mean, z_log_var, z = vae.encoder(input_seq)
-            states_value = z
-            # Generate empty target sequence of length 1.
-            target_seq = np.zeros((1, 1, 450),dtype=np.float32)
-            # Populate the first character of target sequence with the start character.
-            target_seq[0, 0, 448] = 1.
-            #target_seq = np.float32(target_seq)
-            # Sampling loop for a batch of sequences
-            # (to simplify, here we assume a batch of size 1).
-            stop_condition = False
-            decoded_sentence = '( '
-            decoded_word_length = 0
-            decoded_actions = {}
-            decoded_location = ''
-            while not stop_condition:
-                output_tokens, h = vae.decoder(
-                    [target_seq, states_value])
+        
 
-                # Sample a token
-                sampled_token_index = np.argmax(output_tokens[0, -1, :])
-                sampled_char = num_dict[int(sampled_token_index)]
-                decoded_sentence += sampled_char
-                decoded_sentence += " "
-                decoded_word_length += 1
-                # Exit condition: either hit max length
-                # or find stop character.
-                if (sampled_char == ')' or
-                        decoded_word_length > 49):
-                    stop_condition = True
-                elif sampled_char.isdigit():
-                    decoded_location = sampled_char
-                elif decoded_location != '':
-                    decoded_actions[int(decoded_location)] = sampled_char
+        inference_decoder = utils.Inference(board_size=size)
+        result = inference_decoder.decode_sequence(vae, input_image,50)
+        print("with updating state ", result)
 
-                # Update the target sequence (of length 1).
-                target_seq = np.zeros((1, 1, 450),dtype=np.float32)
-                target_seq[0, 0, sampled_token_index] = 1.
-
-                # Update states
-                states_value = h
-            print("decoded sentence ", decoded_sentence)
-            return decoded_actions
-
-        def decode_sequence_fixed_state(input_seq):
-            # Encode the input as state vectors.
-            z_mean, z_log_var, z = vae.encoder(input_seq)
-            states_value = z
-            # Generate empty target sequence of length 1.
-            target_seq = np.zeros((1, 1, 450),dtype=np.float32)
-            # Populate the first character of target sequence with the start character.
-            target_seq[0, 0, 448] = 1.
-            #target_seq = np.float32(target_seq)
-            # Sampling loop for a batch of sequences
-            # (to simplify, here we assume a batch of size 1).
-            stop_condition = False
-            decoded_sentence = ''
-            while not stop_condition:
-                output_tokens, h = vae.decoder(
-                    [target_seq, states_value])
-
-                # Sample a token
-                sampled_token_index = np.argmax(output_tokens[0, -1, :])
-                sampled_char = num_dict[int(sampled_token_index)]
-                decoded_sentence += sampled_char
-                decoded_sentence += " "
-                # Exit condition: either hit max length
-                # or find stop character.
-                if (sampled_char == ')' or
-                        len(decoded_sentence) > 49):
-                    stop_condition = True
-
-                # Update the target sequence (of length 1).
-                target_seq = np.zeros((1, 1, 450), dtype=np.float32)
-                target_seq[0, 0, sampled_token_index] = 1.
-
-            return decoded_sentence
-        result = decode_sequence(input_image)
-        print("decoded actions ", result)
-
-        # Assign actions to shipyard or ships with exact location matching
-        actions = {}
-        for shipyard in current_player.shipyards:
-            position = self.convert_kaggle2D_to_kaggle1D(size, shipyard.position)
-            print("shipyard position is", position)
-            if position in result:
-                if result[position] == 'SPAWN':
-                    actions[shipyard.id] = result[position]
-                    del result[position]
-        unassigned_ships = {}
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
             print("ship position is", position)

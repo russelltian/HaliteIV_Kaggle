@@ -6,7 +6,7 @@ from kaggle_environments.envs.halite.helpers import *
 import numpy as np
 
 sys.path.append("../")
-
+sys.path.append("../bot/")
 '''
 ######################## Gameplay Part ################################################################
 '''
@@ -26,16 +26,18 @@ class Gameplay(object):
         self.board_size = size  # Dimension of the SQUARE board
         self.current_player_id = self.board.current_player_id  # your player id in this game
 
-        self.halite_map = np.zeros((size, size), np.float)  # 2D map of halite
-        self.my_ships_location = np.zeros((size, size), np.int)  # 2D map of your ships location
-        self.my_cargo = np.zeros((size, size), np.float)  # 2D map of your ships cargo
-        self.my_shipyards_location = np.zeros((size, size), np.int)  # 2D map of your shipyards location
+        self.halite_map = np.zeros((size, size), np.float32)  # 2D map of halite
+        self.my_ships_location = np.zeros((size, size), np.float32)  # 2D map of your ships location
+        self.my_cargo = np.zeros((size, size), np.float32)  # 2D map of your ships cargo
+        self.my_shipyards_location = np.zeros((size, size), np.float32)  # 2D map of your shipyards location
         # opponents ship locations
-        self.opponent_ships_location = np.zeros((size, size), np.int)
+        self.opponent_ships_location = np.zeros((size, size), np.float32)
 
 
         # Store information (Note, if this flow got updated, also update reset board function)
-        self.get_ships_information()  # Load ship location, shipyard location, and ship cargo in 2D matrix
+        # Load ship location, shipyard location, and ship cargo in 2D matrix
+        # Load enemies ship location
+        self.get_ships_information()
         self.get_halite()  # Load halite in 2D matrix
         self.normalize()  # Normalization is defined here
 
@@ -53,16 +55,17 @@ class Gameplay(object):
         other_players = board.opponents
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
-            self.my_ships_location[position[0]][position[1]] = 1
+            self.my_ships_location[position[0]][position[1]] = 1.
             self.my_cargo[position[0]][position[1]] = ship.halite
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(size, list(shipyard.position))
-            self.my_shipyards_location[position[0]][position[1]] = 1
+            self.my_shipyards_location[position[0]][position[1]] = 1.
 
         for player in other_players:
             for ship in player.ships:
                 position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
-                self.opponent_ships_location[position[0]][position[1]] = 1
+                self.opponent_ships_location[position[0]][position[1]] = 1.
+                assert(self.my_ships_location[position[0]][position[1]] != 1.)
 
     def get_halite(self):
         """
@@ -175,6 +178,7 @@ class Gameplay(object):
 '''
 ######################## Training Part ################################################################
 '''
+from bot import vae_bot
 
 
 class HaliteV2(object):
@@ -262,7 +266,8 @@ class HaliteV2(object):
             return None
         ### !!!!!!! Currently we only study the game where player 0 is the final winner
         assert (board.current_player_id == self.winner_id == 0)
-        return Gameplay(observation, self.config)
+        #return Gameplay(observation, self.config)
+        return vae_bot.VaeBot(observation, self.config)
 
     def build_game_play_list(self):
         """
@@ -424,7 +429,7 @@ class HaliteV2(object):
             halite.append(each_step.halite_map)
             shipyard.append(each_step.my_shipyards_location)
             cargo.append(each_step.my_cargo)
-            opponent_ship.append((each_step.opponent_ships_location))
+            opponent_ship.append(each_step.opponent_ships_location)
         for each_move in self.my_ship_action_list_2D:
             ship_move.append(each_move)
         self.ship_position = np.array(ship)
@@ -433,6 +438,16 @@ class HaliteV2(object):
         self.cargo = np.array(cargo)
         self.shipyard_position = np.array(shipyard)
         self.opponent_ship_position = np.array(opponent_ship)
+
+    def prepare_vae_encoder_input(self):
+        ship_move = []
+        input_image = []
+        assert (len(self.game_play_list) == self.total_turns - 1)
+        assert (len(self.my_ship_action_list_2D) == len(self.my_shipyard_action_list_2D) == len(self.game_play_list))
+        for each_step in self.game_play_list:
+            input_image.append(each_step.vae_encoder_input_image)
+        input_image.append(self.game_play_list[-1].vae_encoder_input_image)
+        return np.array(input_image)
 
 class LoadGame(object):
     def __init__(self):
@@ -448,6 +463,61 @@ class LoadGame(object):
             print("will implement ")
         else:
             self.ship_actions = game.ship_actions
+
+class Inference(object):
+    def __init__(self, board_size: int):
+        vocab_dict = {}
+        num_dict = {}
+        for i in range(board_size ** 2):
+            vocab_dict[str(i)] = i
+            num_dict[i] = str(i)
+        vocab_idx = board_size ** 2
+        move_option = ["EAST", "WEST", "SOUTH", "NORTH", "CONVERT", "SPAWN", "NO", "(", ")"]
+        for option in move_option:
+            vocab_dict[option] = vocab_idx
+            num_dict[vocab_idx] = option
+            vocab_idx += 1
+
+        self.word_to_index_mapping = vocab_dict
+        self.index_to_word_mapping = num_dict
+        self.dictionary_size = len(self.index_to_word_mapping)
+        assert(len(self.index_to_word_mapping) == len(self.word_to_index_mapping))
+
+    def decode_sequence(self, model, input_seq, max_sequence_length):
+        # Encode the input as state vectors.
+        z_mean, z_log_var, z = model.encoder(input_seq)
+        states_value = z
+        # Generate empty target sequence of length 1.
+        target_seq = np.zeros((1, 1, self.dictionary_size), dtype=np.float32)
+        # Populate the first character of target sequence with the start character.
+        target_seq[0, 0, 448] = 1.
+
+        # Sampling loop for a batch of sequences
+        # (to simplify, here we assume a batch of size 1).
+        stop_condition = False
+        decoded_sentence = ''
+        while not stop_condition:
+            output_tokens, h = model.decoder(
+                [target_seq, states_value])
+
+            # Sample a token
+            sampled_token_index = np.argmax(output_tokens[0, -1, :])
+            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    len(decoded_sentence) > max_sequence_length - 1):
+                stop_condition = True
+
+            # Update the target sequence (of length 1).
+            target_seq = np.zeros((1, 1, self.dictionary_size), dtype=np.float32)
+            target_seq[0, 0, sampled_token_index] = 1.
+
+            # Update states
+            states_value = h
+        return decoded_sentence
 
 
 '''
