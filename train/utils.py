@@ -206,7 +206,6 @@ class HaliteV2(object):
         self.cargo = None
         self.shipyard_position = None
         self.opponent_ship_position = None
-        print(self.game_play_list[0].current_player_id)
     def load_replay(self, path: str):
         """
                 load replay json file from halite website

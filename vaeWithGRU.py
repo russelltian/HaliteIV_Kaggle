@@ -36,10 +36,8 @@ game = None
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
-
     if game.game_play_list is not None:
         print("loading game index", i)
-        game.prepare_data_for_vae()
         """
         Four features as training input:
             1) halite available
@@ -272,7 +270,7 @@ for i in range(1):
 
     #vae.fit(train_dataset, epochs=10)
     vae.fit([train_x, train_y_1, train_y_2], epochs=5)
-    valid = train_x[30:40]
+    validx = train_x[30:40]
 
     validy1 = train_y_1[30:40]
     validy2 = train_y_2[30:40]
