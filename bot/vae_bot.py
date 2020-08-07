@@ -153,12 +153,20 @@ class VaeBot(utils.Gameplay):
 
         vae = tf.saved_model.load('vae_new')
 
-        
-
         inference_decoder = utils.Inference(board_size=size)
-        result = inference_decoder.decode_sequence(vae, input_image,50)
-        print("with updating state ", result)
+        result = inference_decoder.decode_sequence(vae, input_image, 50)
+        print("decoded actions ", result)
 
+        # Assign actions to shipyard or ships with exact location matching
+        actions = {}
+        for shipyard in current_player.shipyards:
+            position = self.convert_kaggle2D_to_kaggle1D(size, shipyard.position)
+            print("shipyard position is", position)
+            if position in result:
+                if result[position] == 'SPAWN':
+                    actions[shipyard.id] = result[position]
+                    del result[position]
+        unassigned_ships = {}
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
             print("ship position is", position)

@@ -492,10 +492,11 @@ class Inference(object):
         # Populate the first character of target sequence with the start character.
         target_seq[0, 0, 448] = 1.
 
-        # Sampling loop for a batch of sequences
-        # (to simplify, here we assume a batch of size 1).
         stop_condition = False
-        decoded_sentence = ''
+        decoded_sentence = '( '
+        decoded_word_length = 0
+        decoded_actions = {}
+        decoded_location = ''
         while not stop_condition:
             output_tokens, h = model.decoder(
                 [target_seq, states_value])
@@ -505,19 +506,25 @@ class Inference(object):
             sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
             decoded_sentence += sampled_char
             decoded_sentence += " "
+            decoded_word_length += 1
             # Exit condition: either hit max length
             # or find stop character.
             if (sampled_char == ')' or
-                    len(decoded_sentence) > max_sequence_length - 1):
+                    decoded_word_length > 49):
                 stop_condition = True
+            elif sampled_char.isdigit():
+                decoded_location = sampled_char
+            elif decoded_location != '':
+                decoded_actions[int(decoded_location)] = sampled_char
 
             # Update the target sequence (of length 1).
-            target_seq = np.zeros((1, 1, self.dictionary_size), dtype=np.float32)
+            target_seq = np.zeros((1, 1, 450), dtype=np.float32)
             target_seq[0, 0, sampled_token_index] = 1.
 
             # Update states
             states_value = h
-        return decoded_sentence
+        print("decoded sentence ", decoded_sentence)
+        return decoded_actions
 
 
 '''
