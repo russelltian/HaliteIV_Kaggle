@@ -31,7 +31,6 @@ latent_dim = 16
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
 
-seq_list = []
 game = None
 
 for i, path in enumerate(replay_files):
@@ -52,7 +51,7 @@ for i, path in enumerate(replay_files):
         # training_input = np.zeros(
         #     (400, 32, 32, FEATURE_MAP_DIMENSION),
         #     dtype='float32')
-        training_input = game.prepare_vae_encoder_input()
+        training_input, sequence = game.prepare_vae_encoder_input()
         """
         Target ship actions:
         """
@@ -114,16 +113,12 @@ for i, path in enumerate(replay_files):
             (400, MAX_WORD_LENGTH, inference_decoder.dictionary_size),
             dtype=np.float32)
 
-        sequence = game.move_sequence
-        sequence.append(sequence[-1])
-        seq_list.append(sequence[-1])
         # TODO: validate max sequence
         for step, each_sequence in enumerate(sequence):
             input_sequence = '( ' + each_sequence
             output_sequence = each_sequence + ')'
             input_sequence_list = input_sequence.split()
             output_sequence_list = output_sequence.split()
-            seq_list.append(each_sequence)
             assert(len(input_sequence_list) == len(output_sequence_list))
             for word_idx in range(len(input_sequence_list)):
                 input_word = input_sequence_list[word_idx]
