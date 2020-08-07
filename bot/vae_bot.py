@@ -53,6 +53,13 @@ class VaeBot(utils.Gameplay):
             for shipyard in current_player.shipyards:
                 actions[shipyard.id] = 'SPAWN'
             return actions
+        # elif obs.step == 3:
+        #     actions = {}
+        #     this_turn = self
+        #     current_player = this_turn.board.current_player
+        #     for ship in current_player.ships:
+        #         actions[ship.id] = "EAST"
+        #     return actions
 
         this_turn = self
         current_player = this_turn.board.current_player
@@ -66,19 +73,19 @@ class VaeBot(utils.Gameplay):
 
         for i in range(size):
             for j in range(size):
-                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10
+                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] / 10
         # Load current player and cargo
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
-            cargo = self.my_cargo[position[0]][position[1]] * 10
-            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10
+            cargo = self.my_cargo[position[0]][position[1]] / 10
+            print("cargo amount at", cargo)
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo
         # 4) ship yard
 
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
             input_image[0][position[0]+pad_offset][position[1]+pad_offset][3] = 10.0
-        actions = {}
 
         #Other player ship
         other_players = self.board.opponents
@@ -101,7 +108,7 @@ class VaeBot(utils.Gameplay):
             vocab_idx += 1
         def decode_sequence(input_seq):
             # Encode the input as state vectors.
-            print(input_seq.shape)
+
             z_mean, z_log_var, z = vae.encoder(input_seq)
             states_value = z
             # Generate empty target sequence of length 1.
@@ -112,7 +119,10 @@ class VaeBot(utils.Gameplay):
             # Sampling loop for a batch of sequences
             # (to simplify, here we assume a batch of size 1).
             stop_condition = False
-            decoded_sentence = ''
+            decoded_sentence = '( '
+            decoded_word_length = 0
+            decoded_actions = {}
+            decoded_location = ''
             while not stop_condition:
                 output_tokens, h = vae.decoder(
                     [target_seq, states_value])
@@ -122,11 +132,16 @@ class VaeBot(utils.Gameplay):
                 sampled_char = num_dict[int(sampled_token_index)]
                 decoded_sentence += sampled_char
                 decoded_sentence += " "
+                decoded_word_length += 1
                 # Exit condition: either hit max length
                 # or find stop character.
                 if (sampled_char == ')' or
-                        len(decoded_sentence) > 49):
+                        decoded_word_length > 49):
                     stop_condition = True
+                elif sampled_char.isdigit():
+                    decoded_location = sampled_char
+                elif decoded_location != '':
+                    decoded_actions[int(decoded_location)] = sampled_char
 
                 # Update the target sequence (of length 1).
                 target_seq = np.zeros((1, 1, 450),dtype=np.float32)
@@ -134,7 +149,8 @@ class VaeBot(utils.Gameplay):
 
                 # Update states
                 states_value = h
-            return decoded_sentence
+            print("decoded sentence ", decoded_sentence)
+            return decoded_actions
 
         def decode_sequence_fixed_state(input_seq):
             # Encode the input as state vectors.
@@ -170,12 +186,37 @@ class VaeBot(utils.Gameplay):
 
             return decoded_sentence
         result = decode_sequence(input_image)
-        print("with updating state ", result)
-        return actions
+        print("decoded actions ", result)
+
+        # Assign actions to shipyard or ships with exact location matching
+        actions = {}
+        for shipyard in current_player.shipyards:
+            position = self.convert_kaggle2D_to_kaggle1D(size, shipyard.position)
+            print("shipyard position is", position)
+            if position in result:
+                if result[position] == 'SPAWN':
+                    actions[shipyard.id] = result[position]
+                    del result[position]
+        unassigned_ships = {}
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
-            print("position is", position)
-            print(valid_move[int(result[position])])
-            if valid_move[int(result[position])] != 'STAY':
-                actions[ship.id] = valid_move[int(result[position])]
+            print("ship position is", position)
+            if position in result and result[position] != 'SPAWN':
+                if result[position] != 'NO':
+                    actions[ship.id] = result[position]
+                del result[position]
+            else:
+                unassigned_ships[ship.id] = position
 
+        print("unassigned actions", result)
+        print("unassigned ships", unassigned_ships)
+
+        # Match unassigned ships with actions in the ships proximity
+        for id, pos in unassigned_ships.items():
+            valid_action = self.find_actions_in_ship_proximity(size, result, pos)
+            if valid_action:
+                if valid_action != 'NO':
+                    actions[id] = valid_action
+                    print("assigned valid action", valid_action)
+
+        return actions

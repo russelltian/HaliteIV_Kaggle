@@ -27,7 +27,7 @@ for f in replay_files:
 training_datasets = []
 ONE_HOT_WORD_LENGTH = 450
 MAX_WORD_LENGTH = 50
-latent_dim = 128
+latent_dim = 16
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 
 seq_list = []
@@ -36,7 +36,8 @@ game = None
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
-    if game.game_play_list is not None and game.winner_id == 0:
+    if game.game_play_list is not None:
+        print("loading game index", i)
         game.prepare_data_for_vae()
         """
         Four features as training input:
@@ -242,6 +243,7 @@ class VAE(keras.Model):
         # (to simplify, here we assume a batch of size 1).
         stop_condition = False
         decoded_sentence = ''
+        decoded_word_length = 0
         while not stop_condition:
             output_tokens, h = self.decoder(
                 [target_seq, states_value])
@@ -251,10 +253,11 @@ class VAE(keras.Model):
             sampled_char = num_dict[int(sampled_token_index)]
             decoded_sentence += sampled_char
             decoded_sentence += " "
+            decoded_word_length += 1
             # Exit condition: either hit max length
             # or find stop character.
             if (sampled_char == ')' or
-                    len(decoded_sentence) > MAX_WORD_LENGTH-1):
+                    decoded_word_length > MAX_WORD_LENGTH-1):
                 stop_condition = True
 
             # Update the target sequence (of length 1).
@@ -365,7 +368,7 @@ for i in range(10):
     vae = VAE(encoder, decoder)
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
     #vae.fit(train_dataset, epochs=10)
-    vae.fit([train_x, train_y_1, train_y_2], epochs=10)
+    vae.fit([train_x, train_y_1, train_y_2], epochs=5)
     valid = train_x[30:40]
     validy1 = train_y_1[30:40]
     validy2 = train_y_2[30:40]
