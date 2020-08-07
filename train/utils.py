@@ -151,6 +151,29 @@ class Gameplay(object):
         assert (0 <= col < size)
         return row * size + col
 
+    def find_actions_in_ship_proximity(self, size: int, actions, ship_pos: int):
+        """
+        Find the first (if any) action that is within 1 space's proximity to the ship's position.
+        If no such action exists, return None
+        :param actions:
+        :param ship_pos:
+        :return:
+        """
+        # TODO: improve robustness in terms of considering crossing the board boundary
+        assert (type(ship_pos) == int)
+        horizontal_proximity = [ship_pos - 1, ship_pos + 1, ship_pos + size, ship_pos - size]
+        print("horizontal proximity", horizontal_proximity)
+        diagonal_proximity = [ship_pos - size - 1, ship_pos - size + 1, ship_pos + size - 1, ship_pos + size + 1]
+        print("diagonal proximity", diagonal_proximity)
+        for pos in actions.keys():
+            if pos in horizontal_proximity and actions[pos] != 'NO':
+                return actions[pos]
+        for pos in actions.keys():
+            if pos in diagonal_proximity and actions[pos] != 'NO':
+                return actions[pos]
+        return None
+
+
 
 '''
 ######################## Training Part ################################################################

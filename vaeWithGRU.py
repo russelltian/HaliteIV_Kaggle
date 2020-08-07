@@ -27,7 +27,7 @@ for f in replay_files:
 training_datasets = []
 ONE_HOT_WORD_LENGTH = 450
 MAX_WORD_LENGTH = 50
-latent_dim = 128
+latent_dim = 16
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
 
@@ -37,10 +37,10 @@ game = None
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
-    if i == 1:
-        break
-    if game.game_play_list is not None and game.winner_id == 0:
 
+    if game.game_play_list is not None:
+        print("loading game index", i)
+        game.prepare_data_for_vae()
         """
         Four features as training input:
             1) halite available
@@ -274,8 +274,11 @@ for i in range(1):
     #     s2 += inference_decoder.index_to_word_mapping[np.argmax(train_y_2[0, jj, :])]
     # print("pred: ", s1, " actual ", s2)
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
-    vae.fit([train_x, train_y_1, train_y_2], epochs=10)
-    validx = train_x[30:40]
+
+    #vae.fit(train_dataset, epochs=10)
+    vae.fit([train_x, train_y_1, train_y_2], epochs=5)
+    valid = train_x[30:40]
+
     validy1 = train_y_1[30:40]
     validy2 = train_y_2[30:40]
 

@@ -106,6 +106,13 @@ class VaeBot(utils.Gameplay):
             for shipyard in current_player.shipyards:
                 actions[shipyard.id] = 'SPAWN'
             return actions
+        # elif obs.step == 3:
+        #     actions = {}
+        #     this_turn = self
+        #     current_player = this_turn.board.current_player
+        #     for ship in current_player.ships:
+        #         actions[ship.id] = "EAST"
+        #     return actions
 
         this_turn = self
         current_player = this_turn.board.current_player
@@ -119,19 +126,20 @@ class VaeBot(utils.Gameplay):
 
         for i in range(size):
             for j in range(size):
-                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] * 10/100
+                input_image[0][i + pad_offset][j + pad_offset][0] = obs.halite[i * size + j] / 10
+
         # Load current player and cargo
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
-            cargo = self.my_cargo[position[0]][position[1]] * 10
-            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10/100
+            cargo = self.my_cargo[position[0]][position[1]] / 10
+            print("cargo amount at", cargo)
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo
         # 4) ship yard
 
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
             input_image[0][position[0]+pad_offset][position[1]+pad_offset][3] = 10.0
-        actions = {}
 
         #Other player ship
         other_players = self.board.opponents
@@ -145,14 +153,31 @@ class VaeBot(utils.Gameplay):
 
         vae = tf.saved_model.load('vae_new')
 
+        
+
         inference_decoder = utils.Inference(board_size=size)
         result = inference_decoder.decode_sequence(vae, input_image,50)
         print("with updating state ", result)
-        return actions
+
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
-            print("position is", position)
-            print(valid_move[int(result[position])])
-            if valid_move[int(result[position])] != 'STAY':
-                actions[ship.id] = valid_move[int(result[position])]
+            print("ship position is", position)
+            if position in result and result[position] != 'SPAWN':
+                if result[position] != 'NO':
+                    actions[ship.id] = result[position]
+                del result[position]
+            else:
+                unassigned_ships[ship.id] = position
 
+        print("unassigned actions", result)
+        print("unassigned ships", unassigned_ships)
+
+        # Match unassigned ships with actions in the ships proximity
+        for id, pos in unassigned_ships.items():
+            valid_action = self.find_actions_in_ship_proximity(size, result, pos)
+            if valid_action:
+                if valid_action != 'NO':
+                    actions[id] = valid_action
+                    print("assigned valid action", valid_action)
+
+        return actions
