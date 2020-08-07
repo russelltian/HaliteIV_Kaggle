@@ -40,7 +40,7 @@ for i, path in enumerate(replay_files):
     if i == 1:
         break
     if game.game_play_list is not None and game.winner_id == 0:
-        game.prepare_data_for_vae()
+
         """
         Four features as training input:
             1) halite available
@@ -49,64 +49,57 @@ for i, path in enumerate(replay_files):
             4) my shipyard
             5) other players' ships
         """
-        training_input = np.zeros(
-            (400, 32, 32, FEATURE_MAP_DIMENSION),
-            dtype='float32')
-
-        my_ship_positions = game.ship_position
-        target_ship_actions = game.ship_actions
-        halite_available = game.halite
-        my_shipyard = game.shipyard_position
-        my_cargo = game.cargo
-        opponent_ship_positions = game.opponent_ship_position
-
+        # training_input = np.zeros(
+        #     (400, 32, 32, FEATURE_MAP_DIMENSION),
+        #     dtype='float32')
+        training_input = game.prepare_vae_encoder_input()
         """
         Target ship actions:
         """
-        training_label = np.zeros(
-            (400, 32, 32, 6),
-            dtype='float32')
+        # training_label = np.zeros(
+        #     (400, 32, 32, 6),
+        #     dtype='float32')
 
         pad_offset = 6
 
         #  1) halite available
-        for i, halite_map in enumerate(zip(halite_available)):
-            # print("halite_map", halite_map)
-            for row_indx, row in enumerate(halite_map[0]):
-                row = np.squeeze(row)
-                for col_indx, item in enumerate(row):
-                    # print(item)
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
-        # 2) my ship position
-        for i, my_ship_position in enumerate(my_ship_positions):
-            for row_indx, row in enumerate(my_ship_position):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
+        # for i, halite_map in enumerate(zip(halite_available)):
+        #     # print("halite_map", halite_map)
+        #     for row_indx, row in enumerate(halite_map[0]):
+        #         row = np.squeeze(row)
+        #         for col_indx, item in enumerate(row):
+        #             # print(item)
+        #             training_input[i, row_indx + pad_offset, col_indx + pad_offset, 0] = item * 10
+        # # 2) my ship position
+        # for i, my_ship_position in enumerate(my_ship_positions):
+        #     for row_indx, row in enumerate(my_ship_position):
+        #         for col_indx, item in enumerate(row):
+        #             training_input[i, row_indx + pad_offset, col_indx + pad_offset, 1] = item * 10
+        #
+        # # 3) cargo on my ship
+        # for i, cargo_map in enumerate(my_cargo):
+        #     for row_indx, row in enumerate(cargo_map):
+        #         for col_indx, item in enumerate(row):
+        #             training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
+        #
+        # # 4) my ship yard position
+        # for i, shipyard_map in enumerate(my_shipyard):
+        #     for row_indx, row in enumerate(shipyard_map):
+        #         for col_indx, item in enumerate(row):
+        #             training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
+        #
+        #
+        # # 5) other players' ship
+        # for i, opponent_ship_position in enumerate(opponent_ship_positions):
+        #     for row_indx, row in enumerate(opponent_ship_position):
+        #         for col_indx, item in enumerate(row):
+        #             training_input[i, row_indx + pad_offset, col_indx + pad_offset, 4] = item * 10
 
-        # 3) cargo on my ship
-        for i, cargo_map in enumerate(my_cargo):
-            for row_indx, row in enumerate(cargo_map):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 2] = item * 10
-
-        # 4) my ship yard position
-        for i, shipyard_map in enumerate(my_shipyard):
-            for row_indx, row in enumerate(shipyard_map):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 3] = item * 10
-
-
-        # 5) other players' ship
-        for i, opponent_ship_position in enumerate(opponent_ship_positions):
-            for row_indx, row in enumerate(opponent_ship_position):
-                for col_indx, item in enumerate(row):
-                    training_input[i, row_indx + pad_offset, col_indx + pad_offset, 4] = item * 10
-
-        # target actions
-        for i, target_ship_action in enumerate(target_ship_actions):
-            for row_indx, row in enumerate(target_ship_action):
-                for col_indx, item in enumerate(row):
-                    training_label[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
+        # # target actions
+        # for i, target_ship_action in enumerate(target_ship_actions):
+        #     for row_indx, row in enumerate(target_ship_action):
+        #         for col_indx, item in enumerate(row):
+        #             training_label[i, row_indx + pad_offset, col_indx + pad_offset, int(item)] = 1.
 
         #print("training input shape", training_input.shape)
         #print("target action shape", training_label.shape)
@@ -275,11 +268,11 @@ for i in range(1):
         train_y_1[idx,] = training_training[1][temp[1]]
         train_y_2[idx,] = training_training[2][temp[1]]
 #train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
-    s1, s2 = '', ''
-    for jj in range(26):
-        s1 += inference_decoder.index_to_word_mapping[np.argmax(train_y_1[0, jj, :])]
-        s2 += inference_decoder.index_to_word_mapping[np.argmax(train_y_2[0, jj, :])]
-    print("pred: ", s1, " actual ", s2)
+    # s1, s2 = '', ''
+    # for jj in range(26):
+    #     s1 += inference_decoder.index_to_word_mapping[np.argmax(train_y_1[0, jj, :])]
+    #     s2 += inference_decoder.index_to_word_mapping[np.argmax(train_y_2[0, jj, :])]
+    # print("pred: ", s1, " actual ", s2)
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
     vae.fit([train_x, train_y_1, train_y_2], epochs=10)
     validx = train_x[30:40]
@@ -293,5 +286,4 @@ vae.predict(validx[i:i + 1, :, :, :])
 # np.save('bot/hh.npy', valid)
 tf.saved_model.save(vae, 'bot/vae_new/')
 
-#train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
 print("done")

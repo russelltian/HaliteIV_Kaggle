@@ -6,7 +6,7 @@ from kaggle_environments.envs.halite.helpers import *
 import numpy as np
 
 sys.path.append("../")
-
+sys.path.append("../bot/")
 '''
 ######################## Gameplay Part ################################################################
 '''
@@ -155,6 +155,7 @@ class Gameplay(object):
 '''
 ######################## Training Part ################################################################
 '''
+from bot import vae_bot
 
 
 class HaliteV2(object):
@@ -242,7 +243,8 @@ class HaliteV2(object):
             return None
         ### !!!!!!! Currently we only study the game where player 0 is the final winner
         assert (board.current_player_id == self.winner_id == 0)
-        return Gameplay(observation, self.config)
+        #return Gameplay(observation, self.config)
+        return vae_bot.VaeBot(observation, self.config)
 
     def build_game_play_list(self):
         """
@@ -413,6 +415,16 @@ class HaliteV2(object):
         self.cargo = np.array(cargo)
         self.shipyard_position = np.array(shipyard)
         self.opponent_ship_position = np.array(opponent_ship)
+
+    def prepare_vae_encoder_input(self):
+        ship_move = []
+        input_image = []
+        assert (len(self.game_play_list) == self.total_turns - 1)
+        assert (len(self.my_ship_action_list_2D) == len(self.my_shipyard_action_list_2D) == len(self.game_play_list))
+        for each_step in self.game_play_list:
+            input_image.append(each_step.vae_encoder_input_image)
+        input_image.append(self.game_play_list[-1].vae_encoder_input_image)
+        return np.array(input_image)
 
 class LoadGame(object):
     def __init__(self):
