@@ -30,6 +30,7 @@ MAX_WORD_LENGTH = 50
 latent_dim = 16
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
+BATCH_SIZE = 40
 
 game = None
 
@@ -147,7 +148,9 @@ encoder_inputs = keras.Input(shape=(32, 32, FEATURE_MAP_DIMENSION))
 x = layers.Conv2D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)
 x = layers.Conv2D(64, 3, activation="relu", strides=2, padding="same")(x)
 x = layers.Flatten()(x)
+print(layers.Reshape((-1,64))(x))
 x = layers.Dense(16, activation="relu")(x)
+print(x.shape)
 z_mean = layers.Dense(latent_dim, name="z_mean")(x)
 z_log_var = layers.Dense(latent_dim, name="z_log_var")(x)
 z = Sampling()([z_mean, z_log_var])
@@ -182,13 +185,39 @@ decoder.summary()
 ## Define the VAE as a `Model` with a custom `train_step`
 """
 
+# Bahdanau is one variant of the attention mechanism.
+# The other variant is the Luong attention.
+class BahdanauAttention(tf.keras.Model):
+  def __init__(self, units):
+    super(BahdanauAttention, self).__init__()
+    self.W1 = tf.keras.layers.Dense(units)
+    self.W2 = tf.keras.layers.Dense(units)
+    self.V = tf.keras.layers.Dense(1)
+
+  def call(self, features, hidden):
+    # features(CNN_encoder output) shape == (batch_size, 64, embedding_dim)
+
+    # hidden shape == (batch_size, hidden_size)
+    # hidden_with_time_axis shape == (batch_size, 1, hidden_size)
+    hidden_with_time_axis = tf.expand_dims(hidden, 1)
+
+    # score shape == (batch_size, 64, hidden_size)
+    score = tf.nn.tanh(self.W1(features) + self.W2(hidden_with_time_axis))(BATCH_SIZE, 64, latent_dim) + (BATCH_SIZE,1,)
+    # attention_weights shape == (batch_size, 64, 1)
+    # You get 1 at the last axis because you are applying score to self.V
+    attention_weights = tf.nn.softmax(self.V(score), axis=1)
+
+    # context_vector shape after sum == (batch_size, hidden_size)
+    context_vector = attention_weights * features
+    context_vector = tf.reduce_sum(context_vector, axis=1)
+
+    return context_vector, attention_weights
 
 class VAE(keras.Model):
     def __init__(self, encoder, decoder, **kwargs):
         super(VAE, self).__init__(**kwargs)
         self.encoder = encoder
         self.decoder = decoder
-
     @tf.function
     def call(self, inputs, training=False):
         z_mean, z_log_var, z = self.encoder(inputs)
@@ -209,6 +238,7 @@ class VAE(keras.Model):
         y2 = data[0][2]
         with tf.GradientTape() as tape:
             z_mean, z_log_var, z = self.encoder(x)
+            print("hidden layer shape: ", z.shape)
             reconstruction, _ = self.decoder([y1, z])
             reconstruction_loss = tf.reduce_mean(
                 keras.losses.categorical_crossentropy(y2, reconstruction)
@@ -234,11 +264,11 @@ validy1 =  None
 validy2 =  None
 for i in range(1):
     print("Training Round : ", i)
-    train_x = np.empty((400, 32, 32, FEATURE_MAP_DIMENSION))
-    train_y_1 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
-    train_y_2 = np.empty((400, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
+    train_x = np.empty((BATCH_SIZE, 32, 32, FEATURE_MAP_DIMENSION))
+    train_y_1 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
+    train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
     random_idx = []
-    for j in range(400):
+    for j in range(BATCH_SIZE):
         random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
     for idx, choice in enumerate(random_idx):
         # choice[0] is which gameplay we pick
@@ -285,7 +315,7 @@ for i in range(1):
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
 
     #vae.fit(train_dataset, epochs=10)
-    vae.fit([train_x, train_y_1, train_y_2], epochs=5)
+    vae.fit([train_x, train_y_1, train_y_2], epochs=50)
     validx = train_x[30:40]
 
     validy1 = train_y_1[30:40]
