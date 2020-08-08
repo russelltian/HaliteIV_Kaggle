@@ -36,6 +36,8 @@ game = None
 for i, path in enumerate(replay_files):
     game = utils.HaliteV2(path)
     print("index", i)
+    if i == 2:
+        break
     if game.game_play_list is not None:
         print("loading game index", i)
         """
@@ -104,36 +106,21 @@ for i, path in enumerate(replay_files):
 
         # target actions
         assert(inference_decoder.dictionary_size == 450)
-        decoder_input_data = np.zeros(
-            (400, MAX_WORD_LENGTH, inference_decoder.dictionary_size),
-            dtype=np.float32)
-        decoder_target_data = np.zeros(
-            (400, MAX_WORD_LENGTH, inference_decoder.dictionary_size),
-            dtype=np.float32)
-
+        decoder_input_sequence = []
+        decoder_target_sequence = []
         # TODO: validate max sequence
         for step, each_sequence in enumerate(sequence):
             input_sequence = '( ' + each_sequence
             output_sequence = each_sequence + ')'
-            input_sequence_list = input_sequence.split()
-            output_sequence_list = output_sequence.split()
-            assert(len(input_sequence_list) == len(output_sequence_list))
-            for word_idx in range(len(input_sequence_list)):
-                input_word = input_sequence_list[word_idx]
-                output_word = output_sequence_list[word_idx]
-                # if input_word == '(' or output_word == ')':
-                #     print(input_word, output_word)
-                # TODO : increase length of sentence
-                if word_idx == MAX_WORD_LENGTH-1:
-                    break
-                decoder_input_data[step][word_idx][inference_decoder.word_to_index_mapping[input_word]] = 1.
-                decoder_target_data[step][word_idx][inference_decoder.word_to_index_mapping[output_word]] = 1.
+            decoder_input_sequence.append(input_sequence)
+            decoder_target_sequence.append(output_sequence)
+        assert(len(decoder_target_sequence) == len(decoder_input_sequence) == 400)
         #print("target action shape", decoder_target_data.shape)
        # train_dataset = tf.data.Dataset.from_tensor_slices((training_input, training_label))
 
       # print("dataset shape", len(list(train_dataset.as_numpy_iterator())))
-        train_dataset = [training_input, decoder_input_data,
-                         decoder_target_data]
+        train_dataset = [training_input, decoder_input_sequence,
+                         decoder_target_sequence]
         training_datasets.append(train_dataset)
 
 # train_dataset = training_datasets[0]
@@ -245,7 +232,6 @@ class VAE(keras.Model):
 validx = None
 validy1 =  None
 validy2 =  None
-vae = VAE(encoder, decoder)
 for i in range(1):
     print("Training Round : ", i)
     train_x = np.empty((400, 32, 32, FEATURE_MAP_DIMENSION))
@@ -254,18 +240,48 @@ for i in range(1):
     random_idx = []
     for j in range(400):
         random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
-    for idx, temp in enumerate(random_idx):
+    for idx, choice in enumerate(random_idx):
+        # choice[0] is which gameplay we pick
+        # choice[1] is which step in the gameplay we pick
         # Find list of IDs
-        training_training = training_datasets[temp[0]]
-        train_x[idx,] = training_training[0][temp[1]]
-        train_y_1[idx,] = training_training[1][temp[1]]
-        train_y_2[idx,] = training_training[2][temp[1]]
+        each_training_sample = training_datasets[choice[0]]
+        train_x[idx, ] = each_training_sample[0][choice[1]]
+        input_sequence = each_training_sample[1][choice[1]]
+        output_sequence = each_training_sample[2][choice[1]]
+
+        # convert sequence to vector
+        decoder_input_data = np.zeros(
+            (1, MAX_WORD_LENGTH, inference_decoder.dictionary_size),
+            dtype=np.float32)
+        decoder_target_data = np.zeros(
+            (1, MAX_WORD_LENGTH, inference_decoder.dictionary_size),
+            dtype=np.float32)
+
+        input_sequence_list = input_sequence.split()
+        output_sequence_list = output_sequence.split()
+        assert (len(input_sequence_list) == len(output_sequence_list))
+
+        for word_idx in range(len(input_sequence_list)):
+            input_word = input_sequence_list[word_idx]
+            output_word = output_sequence_list[word_idx]
+            # if input_word == '(' or output_word == ')':
+            #     print(input_word, output_word)
+            # TODO : increase length of sentence
+            if word_idx == MAX_WORD_LENGTH - 1:
+                break
+            decoder_input_data[0][word_idx][inference_decoder.word_to_index_mapping[input_word]] = 1.
+            decoder_target_data[0][word_idx][inference_decoder.word_to_index_mapping[output_word]] = 1.
+        train_y_1[idx, ] = decoder_input_data
+        train_y_2[idx, ] = decoder_target_data
+
+
 #train_dataset = train_dataset.shuffle(7200, reshuffle_each_iteration=True).batch(40)
     # s1, s2 = '', ''
     # for jj in range(26):
     #     s1 += inference_decoder.index_to_word_mapping[np.argmax(train_y_1[0, jj, :])]
     #     s2 += inference_decoder.index_to_word_mapping[np.argmax(train_y_2[0, jj, :])]
     # print("pred: ", s1, " actual ", s2)
+    vae = VAE(encoder, decoder)
     vae.compile(optimizer=keras.optimizers.Adam(lr=0.005))
 
     #vae.fit(train_dataset, epochs=10)

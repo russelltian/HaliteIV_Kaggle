@@ -198,7 +198,9 @@ class HaliteV2(object):
 
         # my ship action is only available in supervise learning training mode
         self.valid_move = ["STAY", "EAST", "WEST", "SOUTH", "NORTH", "CONVERT"]
-        self.my_ship_action_list_2D, self.my_shipyard_action_list_2D, self.move_sequence = self.build_my_ship_action_list()
+        #self.my_ship_action_list_2D, self.my_shipyard_action_list_2D, self.move_sequence = self.build_my_ship_action_list()
+        self.move_sequence = self.build_my_ship_action_list()
+        # For training
         # For training
         self.ship_position = None
         self.ship_actions = None
@@ -287,7 +289,6 @@ class HaliteV2(object):
         map_size = self.config["size"]
         ships_action = []
         shipyards_action = []
-        spawn = []
         moves_sequence = []
         # convert top left coordinate to (left row, left col)
         def get_2D_col_row(size: int, pos: int):
@@ -304,10 +305,9 @@ class HaliteV2(object):
             observation = self.replay["steps"][step - 1][0]["observation"]
             # Declare processing information
             # ship action and shipyard action per step
-            step_ships_action = np.zeros((map_size, map_size), np.int32)
-            step_shipyard_action = np.zeros((map_size, map_size), np.int32)
+            # step_ships_action = np.zeros((map_size, map_size), np.int32)
+            # step_shipyard_action = np.zeros((map_size, map_size), np.int32)
             # ZERO if no ship yard spawned new ships
-            spawn.append(0)
 
             # Load ship moves for all active players
             for pid in range(len(board_info_per_step)):
@@ -322,27 +322,28 @@ class HaliteV2(object):
                     # Get halite, shipyard, ship information of the player
                     player_shipyard = player_observation[1]
                     player_ship = player_observation[2]
+
                     # load action for 2D part
-                    for ship_shipyard_id, move in board_info_per_step[pid]["action"].items():
-                        if move == "SPAWN":
-                            # check it is a shipyard
-                            assert (ship_shipyard_id in player_shipyard)
-                            # Get shipyard location
-                            shipyard_pos_1d = player_shipyard[ship_shipyard_id]
-                            shipyard_pos_2d = get_2D_col_row(map_size, shipyard_pos_1d)
-                            step_shipyard_action[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
-                            # update spawn to ONE since new ship spawned
-                            spawn[-1] = 1
-                        else:
-                            # check it is a valid move for ships
-                            assert (move in self.valid_move)
-                            # get information of the ship
-                            assert(ship_shipyard_id in player_ship)
-                            ship_info = player_ship[ship_shipyard_id]
-                            assert (len(ship_info) == 2)  # [pos,cargo]
-                            ship_pos_1d = ship_info[0]
-                            ship_pos_2d = get_2D_col_row(map_size, ship_pos_1d)
-                            step_ships_action[ship_pos_2d[0]][ship_pos_2d[1]] = self.valid_move.index(move)
+                    # for ship_shipyard_id, move in board_info_per_step[pid]["action"].items():
+                    #     if move == "SPAWN":
+                    #         # check it is a shipyard
+                    #         assert (ship_shipyard_id in player_shipyard)
+                    #         # Get shipyard location
+                    #         shipyard_pos_1d = player_shipyard[ship_shipyard_id]
+                    #         shipyard_pos_2d = get_2D_col_row(map_size, shipyard_pos_1d)
+                    #         step_shipyard_action[shipyard_pos_2d[0]][shipyard_pos_2d[1]] = 1
+                    #         # update spawn to ONE since new ship spawned
+                    #     else:
+                    #         # check it is a valid move for ships
+                    #         assert (move in self.valid_move)
+                    #         # get information of the ship
+                    #         assert(ship_shipyard_id in player_ship)
+                    #         ship_info = player_ship[ship_shipyard_id]
+                    #         assert (len(ship_info) == 2)  # [pos,cargo]
+                    #         ship_pos_1d = ship_info[0]
+                    #         ship_pos_2d = get_2D_col_row(map_size, ship_pos_1d)
+                    #         step_ships_action[ship_pos_2d[0]][ship_pos_2d[1]] = self.valid_move.index(move)
+
                     # Store all ship and shipyards action to a sequence of string
                     sequence = ""
                     shipyard_id_position = []
@@ -374,18 +375,18 @@ class HaliteV2(object):
                             sequence += " " + str(ship_shipyard_move[each_ship[0]]) + " "
                         else:
                             sequence += " NO "
-                   # print(sequence)
+                    # print(sequence)
                     # print(step_ships_action)
                     # print(step_shipyard_action)
                     moves_sequence.append(sequence)
-                    ships_action.append(step_ships_action)
-                    shipyards_action.append(step_shipyard_action)
+                    # ships_action.append(step_ships_action)
+                    # shipyards_action.append(step_shipyard_action)
             # Load training features
 
-        ships_action = np.array(ships_action)
-        shipyards_action = np.array(shipyards_action)
-        spawn = np.array(spawn)
-        return ships_action, shipyards_action, moves_sequence
+        # ships_action = np.array(ships_action)
+        # shipyards_action = np.array(shipyards_action)
+        # return ships_action, shipyards_action, moves_sequence
+        return moves_sequence
 
     # def build_training_data_for_lstm(self):
     #     """
@@ -436,13 +437,12 @@ class HaliteV2(object):
         ship_move = self.move_sequence
         input_image = []
         assert (len(self.game_play_list) == self.total_turns - 1)
-        assert (len(self.my_ship_action_list_2D) == len(self.my_shipyard_action_list_2D) == len(self.game_play_list))
         for each_step in self.game_play_list:
             input_image.append(each_step.vae_encoder_input_image)
         input_image.append(self.game_play_list[0].vae_encoder_input_image)
         first_move = self.move_sequence[0]
         ship_move.append(first_move)
-        assert(len(input_image) == len(ship_move) == 400 )
+        assert(len(input_image) == len(ship_move) == 400)
         return np.array(input_image), ship_move
 
 
