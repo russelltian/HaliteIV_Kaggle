@@ -3,7 +3,7 @@ import os
 from kaggle_environments.envs.halite.helpers import *
 
 import numpy as np
-
+import tensorflow as tf
 sys.path.append("../")
 sys.path.append("../bot/")
 '''
@@ -465,6 +465,11 @@ class Inference(object):
         self.dictionary_size = len(self.index_to_word_mapping)
         assert(len(self.index_to_word_mapping) == len(self.word_to_index_mapping))
 
+        # keras tokenizer
+        tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=len(self.index_to_word_mapping),
+                                                  filters='!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ')
+        # tokenizer.fit_on_texts(train_captions)
+
     def decode_sequence(self, model, input_seq, max_sequence_length):
         # Encode the input as state vectors.
         z_mean, z_log_var, z = model.encoder(input_seq)
@@ -508,6 +513,49 @@ class Inference(object):
         print("decoded sentence ", decoded_sentence)
         return decoded_actions
 
+    def decode_attention_sequence(self, model, input_seq, max_sequence_length):
+        # Encode the input as state vectors.
+        x, z_mean, z_log_var, z = model.encoder(input_seq)
+        states_value = z
+        context_vec, attention_W = model.attention([x, z])
+        # Generate empty target sequence of length 1.
+        target_seq = np.zeros((1, 1, self.dictionary_size), dtype=np.float32)
+        # Populate the first character of target sequence with the start character.
+        target_seq[0, 0, 448] = 1.
+
+        stop_condition = False
+        decoded_sentence = '( '
+        decoded_word_length = 0
+        decoded_actions = {}
+        decoded_location = ''
+        while not stop_condition:
+            output_tokens, h = model.decoder(
+                [target_seq, states_value, context_vec])
+
+            # Sample a token
+            sampled_token_index = np.argmax(output_tokens[0, -1, :])
+            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            decoded_word_length += 1
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    decoded_word_length > 49):
+                stop_condition = True
+            elif sampled_char.isdigit():
+                decoded_location = sampled_char
+            elif decoded_location != '':
+                decoded_actions[int(decoded_location)] = sampled_char
+
+            # Update the target sequence (of length 1).
+            target_seq = np.zeros((1, 1, 450), dtype=np.float32)
+            target_seq[0, 0, sampled_token_index] = 1.
+
+            # Update states
+            states_value = h
+        print("decoded sentence ", decoded_sentence)
+        return decoded_actions
 
 '''
 ########################################################################################################################

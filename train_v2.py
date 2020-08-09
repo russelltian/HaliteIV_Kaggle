@@ -6,7 +6,7 @@ from tensorflow.keras import layers
 import os
 from tensorflow.python.keras.layers import Dense
 from train import utils
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, Manager
 
 """
 ## Create a sampling layer
@@ -24,8 +24,8 @@ for r, d, f in os.walk(PATH):
 for f in replay_files:
     print(f)
 
-
-training_datasets = []
+manager = Manager()
+training_datasets = manager.list()
 ONE_HOT_WORD_LENGTH = 450
 MAX_WORD_LENGTH = 50
 latent_dim = 16
@@ -34,9 +34,12 @@ inference_decoder = utils.Inference(board_size=21)
 BATCH_SIZE = 40
 embedding_dim = 64
 game = None
-
-def load_raw_data(path):
+jhh = np.empty((BATCH_SIZE, ONE_HOT_WORD_LENGTH))
+a = keras.layers.Embedding(ONE_HOT_WORD_LENGTH,64)
+print(a(jhh).shape)
+def load_raw_data(path, i, training_datasets):
     # for i, path in enumerate(replay_files):
+        print("file idx :", i)
         game = utils.HaliteV2(path)
         print("loading file from ", path)
         if game.game_play_list is not None:
@@ -74,9 +77,14 @@ def load_raw_data(path):
             train_dataset = [training_input, decoder_input_sequence,
                              decoder_target_sequence]
             training_datasets.append(train_dataset)
-
-pool = Pool()
-pool.map(load_raw_data, replay_files)
+process_list = []
+for i in range(2):
+    p = Process(target=load_raw_data, args=(replay_files[i], i, training_datasets))
+    p.start()
+    process_list.append(p)
+for i in process_list:
+    p.join()
+print(len(training_datasets))
 
 class Sampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
@@ -111,6 +119,7 @@ class VAE_CNN_Encoder(tf.keras.Model):
         x = self.conv2(x)
         embedding = layers.Reshape((-1,64))(x)
         embedding = tf.nn.relu(embedding)
+        # batch * 64 * 64
         x = self.flatten(x)
         x = self.dense1(x)
         z_mean = self.z_mean(x)
@@ -129,16 +138,19 @@ class BahdanauAttention(tf.keras.Model):
   def call(self, features, hidden):
     # features(CNN_encoder output) shape == (batch_size, ?, latent_dim)
 
-    # hidden shape == (batch_size, hidden_size)
-    # hidden_with_time_axis shape == (batch_size, 1, hidden_size)
+    # hidden shape == (batch_size, latent_dim)
+    # hidden_with_time_axis shape == (batch_size, 1, latent_dim)
     hidden_with_time_axis = tf.expand_dims(hidden, 1)
-
-    # score shape == (batch_size, 64, hidden_size)
+    # score shape == (batch_size, 64, latent_dim)
     score = tf.nn.tanh(self.W1(features) + self.W2(hidden_with_time_axis))
+     #   (BATCH_SIZE, 64, latent_dim) + (BATCH_SIZE, 1, latent_dim)
     # attention_weights shape == (batch_size, 64, 1)
     # You get 1 at the last axis because you are applying score to self.V
-    attention_weights = tf.nn.softmax(self.V(score), axis=1)
 
+   # print("scoreshape", score.shape)
+
+    attention_weights = tf.nn.softmax(self.V(score), axis=1)
+  #  print("attention_weights shape", attention_weights.shape)
     # context_vector shape after sum == (batch_size, hidden_size)
     context_vector = attention_weights * features
     context_vector = tf.reduce_sum(context_vector, axis=1)
@@ -163,6 +175,7 @@ class GRU_Decoder(tf.keras.Model):
         super(GRU_Decoder, self).__init__()
         self.latent_dim = latent_dim
         self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
+        self.fc0 = tf.keras.layers.Dense(embedding_dim)
         self.gru = tf.keras.layers.GRU(self.latent_dim, return_sequences=True,
                                        return_state=True, recurrent_initializer='glorot_uniform')
         self.fc1 = tf.keras.layers.Dense(self.latent_dim)
@@ -172,11 +185,10 @@ class GRU_Decoder(tf.keras.Model):
     def call(self, x, features, hidden):
         # defining attention as a separate model
         context_vector, attention_weights = self.attention(features, hidden)
-        print(context_vector.shape, attention_weights.shape)
-        print(x.shape)
+      #  print(context_vector.shape, attention_weights.shape)
         # x shape after passing through embedding == (batch_size, 1, embedding_dim)
-        x = self.embedding(x)
-        print(x.shape)
+        x = tf.expand_dims(self.fc0(x), 1)
+      #  print("decoder after dense x shape ", x.shape)
         # x shape after concatenation == (batch_size, 1, embedding_dim + hidden_size)
         x = tf.concat([tf.expand_dims(context_vector, 1), x], axis=-1)
 
@@ -213,7 +225,7 @@ encoder = VAE_CNN_Encoder(latent_dim)
 decoder = GRU_Decoder(embedding_dim, latent_dim, vocab_size=inference_decoder.dictionary_size)
 
 
-optimizer = tf.keras.optimizers.Adam()
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.005)
 
 def loss_function(real, pred,  z, z_mean, z_log_var):
     reconstruction_loss = tf.reduce_mean(
@@ -227,53 +239,6 @@ def loss_function(real, pred,  z, z_mean, z_log_var):
 
     return total_loss
 
-"""
-## Define the VAE as a `Model` with a custom `train_step`
-"""
-
-class VAE(keras.Model):
-    def __init__(self, encoder, decoder, **kwargs):
-        super(VAE, self).__init__(**kwargs)
-        self.encoder = encoder
-        self.decoder = decoder
-        self.attention = BahdanauAttention()
-    @tf.function
-    def call(self, inputs, training=False):
-        z_mean, z_log_var, z = self.encoder(inputs)
-        #reconstruction = self.decoder(z)
-        return z
-    # def call(self, inputs, training=False):
-    #     #z_mean, z_log_var, z = self.encoder(inputs)
-    #     print(inputs)
-    #     inputs = np.array(inputs)
-    #     reconstruction = self.decode_sequence(inputs)#self.decoder(z)
-    #     return reconstruction
-    def train_step(self, data):
-        # print("im here")
-        # print("data is", data)
-
-        x = data[0][0]
-        y1 = data[0][1]
-        y2 = data[0][2]
-        with tf.GradientTape() as tape:
-            z_mean, z_log_var, z = self.encoder(x)
-            print("hidden layer shape: ", z.shape)
-            reconstruction, _ = self.decoder([y1, z])
-            reconstruction_loss = tf.reduce_mean(
-                keras.losses.categorical_crossentropy(y2, reconstruction)
-            )
-            reconstruction_loss *= 32 * 32
-            kl_loss = 1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
-            kl_loss = tf.reduce_mean(kl_loss)
-            kl_loss *= -0.5
-            total_loss = reconstruction_loss + kl_loss
-        grads = tape.gradient(total_loss, self.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-        return {
-            "loss": total_loss,
-            "reconstruction_loss": reconstruction_loss,
-            "kl_loss": kl_loss,
-        }
 
 """
 ## Train the VAE
@@ -299,16 +264,20 @@ def train_step(input_image, decoder_input, decoder_target):
 
     with tf.GradientTape() as tape:
         feature_embeddings, z, z_mean, z_log_var = encoder(input_image)
-        hidden = decoder.reset_state(batch_size=BATCH_SIZE)
+      #  print("training embedding x:", feature_embeddings.shape)
+      #  print("training z:", z.shape)
+        hidden = z # decoder.reset_state(batch_size=BATCH_SIZE)
+      #  print("decoder target shape:", decoder_target.shape)
+        decoder_frames = decoder_input[:, 0, :] #tf.expand_dims(decoder_input[:, 0, :],1)
+      #  print("decoder input shape", decoder_frames.shape)
         for i in range(1, decoder_target.shape[1]):
             # passing the features through the decoder
-            predictions, hidden, _ = decoder(decoder_input, feature_embeddings, hidden)
-
+            predictions, hidden, _ = decoder(decoder_frames, feature_embeddings, hidden)
+            #print("prediction from decoder ", predictions.shape)
             loss += loss_function(decoder_target[:, i], predictions, z, z_mean, z_log_var)
 
             # using teacher forcing
-            decoder_input = tf.expand_dims(decoder_target[:, i], 1)
-
+            decoder_frames = decoder_input[:, i, :] #tf.expand_dims(decoder_input[:, i, :],1)
     total_loss = (loss / int(decoder_target.shape[1]))
 
     trainable_variables = encoder.trainable_variables + decoder.trainable_variables
@@ -318,23 +287,24 @@ def train_step(input_image, decoder_input, decoder_target):
     optimizer.apply_gradients(zip(gradients, trainable_variables))
 
     return loss, total_loss
-EPOCHS = 1
+EPOCHS = 5
+valid_x = None
 for epoch in range(0, EPOCHS):
-    print("Training Epoch : ", i)
+    print("Training Epoch : ", epoch)
     total_loss = 0
-    for batch in range(1):
+    for batch in range(5):
         train_x = np.empty((BATCH_SIZE, 32, 32, FEATURE_MAP_DIMENSION))
         train_y_1 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
         train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH, ONE_HOT_WORD_LENGTH))
         random_idx = []
         for j in range(BATCH_SIZE):
-            random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
+            random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, BATCH_SIZE-1)])
         for idx, choice in enumerate(random_idx):
             # choice[0] is which gameplay we pick
             # choice[1] is which step in the gameplay we pick
             # Find list of IDs
             each_training_sample = training_datasets[choice[0]]
-            train_x[idx,] = each_training_sample[0][choice[1]]
+            train_x[idx, ] = each_training_sample[0][choice[1]]
             input_sequence = each_training_sample[1][choice[1]]
             output_sequence = each_training_sample[2][choice[1]]
 
@@ -361,8 +331,43 @@ for epoch in range(0, EPOCHS):
                 decoder_target_data[0][word_idx][inference_decoder.word_to_index_mapping[output_word]] = 1.
             train_y_1[idx, ] = decoder_input_data
             train_y_2[idx, ] = decoder_target_data
+        valid_x = train_x
         batch_loss, t_loss = train_step(train_x, train_y_1, train_y_2)
         total_loss += t_loss
+        print("loss :", total_loss)
     ckpt_manager.save()
 
+dictionary = utils.Inference(board_size=21)
+def evaluate(image):
+    attention_plot = np.zeros((MAX_WORD_LENGTH, latent_dim))
+
+   # hidden = decoder.reset_state(batch_size=1)
+
+    features, z, _, _ = encoder(image)
+
+    dec_input = np.zeros((1, 450), dtype=np.float32)
+    # Populate the first character of target sequence with the start character.
+    dec_input[0, 448] = 1.
+    result = []
+
+    for i in range(MAX_WORD_LENGTH):
+       # print(dec_input.shape, features.shape, hidden.shape)
+        predictions, z, attention_weights = decoder(dec_input, features, z)
+
+       # attention_plot[i] = tf.reshape(attention_weights, (-1, )).numpy()
+
+        predicted_id = np.argmax(predictions[-1, :])
+        result.append(dictionary.index_to_word_mapping[predicted_id])
+
+        if dictionary.index_to_word_mapping[predicted_id] == ')':
+            return result, attention_plot
+
+        dec_input = np.zeros((1, 450), dtype=np.float32)
+        dec_input[0, predicted_id] = 1.
+
+    #attention_plot = attention_plot[:len(result), :]
+    return result, attention_plot
+for i in range(10):
+    result, attention_plot = evaluate(valid_x[i:i + 1, :, :, :])
+    print(result)
 print("done")
