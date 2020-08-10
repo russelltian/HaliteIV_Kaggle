@@ -17,6 +17,7 @@ class VaeBot(utils.Gameplay):
 
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
+        self.vae_encoder_input_image = self.prepare_encoder_input()
 
     def normalize(self):
         """
@@ -146,7 +147,7 @@ class VaeBot(utils.Gameplay):
         #         input_image[0][position[0] + pad_offset][position[1] + pad_offset][4] = 1 * 10
         # Define sampling models
         size = self.board_size
-        vae = tf.saved_model.load('vae_attention')
+        vae = tf.saved_model.load('vae_new')
         input_image = self.vae_encoder_input_image
         inference_decoder = utils.Inference(board_size=21)
         result = inference_decoder.attention_decode_sequence(vae, input_image)
