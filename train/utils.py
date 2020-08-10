@@ -468,7 +468,7 @@ class Inference(object):
         assert(len(self.index_to_word_mapping) == len(self.word_to_index_mapping))
 
     def attention_decode_sequence(self, model, input_image):
-        hidden = tf.zeros((1, 16))
+        hidden = tf.zeros((1, 512))
         features = model.encoder(input_image)
         dec_input = [[448]]
 
@@ -479,7 +479,12 @@ class Inference(object):
         decoded_location = ''
         while not stop_condition:
             predictions, hidden, _ = model.decoder([dec_input, features, hidden])
-            sampled_token_index = np.argmax(predictions)
+            #print("predictions is", predictions)
+            #print("predictions length", len(predictions[0]))
+            #print("prediction is", predictions[0])
+            sampled_token_index = tf.random.categorical(predictions, 1)[0][0].numpy()
+            #sampled_token_index = np.argmax(predictions[0])
+            print("sampled token is", sampled_token_index)
             sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
             decoded_sentence += sampled_char
             decoded_sentence += " "
@@ -493,7 +498,8 @@ class Inference(object):
                 decoded_location = sampled_char
             elif decoded_location != '':
                 decoded_actions[int(decoded_location)] = sampled_char
-            dec_input[0][0] = sampled_token_index
+            dec_input[0][0] = int(sampled_token_index)
+            print("dec_input is", dec_input[0][0])
         print("decoded sentence ", decoded_sentence)
         return decoded_actions
 

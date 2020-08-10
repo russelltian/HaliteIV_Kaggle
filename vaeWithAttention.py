@@ -12,17 +12,17 @@ from multiprocessing import Pool
 training_datasets = []
 vocab_size = 450
 MAX_WORD_LENGTH = 50
-units = 16
-embedding_dim = 128
+units = 512
+embedding_dim = 256
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
-BATCH_SIZE = 40
+BATCH_SIZE = 50
 DATASET_SIZE = 400
 
 """
     Data Extraction
 """
-PATH = 'train/test_replay/'
+PATH = 'train/top_replay/'
 replay_files = []
 # r=root, d=directories, f = files
 for r, d, f in os.walk(PATH):
@@ -85,54 +85,15 @@ for i in range(len(replay_files)):
                             each element varies in length
                             each element does not have EOS ")"
 """
+class Sampling(layers.Layer):
+    """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
 
-
-"""
-    Attention
-"""
-# features = keras.Input(shape=(64, 64))
-# hidden = keras.Input(shape=units)
-# hidden_with_time_axis = tf.expand_dims(hidden, 1)
-# w1 = layers.Dense(units)(features)
-# w2 = layers.Dense(units)(hidden_with_time_axis)
-# score = tf.nn.tanh(w1 + w2)
-# V = layers.Dense(1)(score)
-# attention_weights = tf.nn.softmax(V, axis=1)
-# context_vector = attention_weights * features
-# context_vector = tf.reduce_sum(context_vector, axis=1)
-# BahdanauAttention = keras.Model(
-#     [features, hidden],
-#     [context_vector, attention_weights], name="attention"
-# )
-# BahdanauAttention.summary()
-
-
-# class BahdanauAttention(tf.keras.Model):
-#   def __init__(self, units):
-#     super(BahdanauAttention, self).__init__()
-#     self.W1 = tf.keras.layers.Dense(units)
-#     self.W2 = tf.keras.layers.Dense(units)
-#     self.V = tf.keras.layers.Dense(1)
-#
-#   def call(self, features, hidden):
-#     # features(CNN_encoder output) shape == (batch_size, 64, embedding_dim)
-#
-#     # hidden shape == (batch_size, hidden_size)
-#     # hidden_with_time_axis shape == (batch_size, 1, hidden_size)
-#     hidden_with_time_axis = tf.expand_dims(hidden, 1)
-#
-#     # score shape == (batch_size, 64, hidden_size)
-#     score = tf.nn.tanh(self.W1(features) + self.W2(hidden_with_time_axis))
-#
-#     # attention_weights shape == (batch_size, 64, 1)
-#     # you get 1 at the last axis because you are applying score to self.V
-#     attention_weights = tf.nn.softmax(self.V(score), axis=1)
-#
-#     # context_vector shape after sum == (batch_size, hidden_size)
-#     context_vector = attention_weights * features
-#     context_vector = tf.reduce_sum(context_vector, axis=1)
-#
-#     return context_vector, attention_weights
+    def call(self, inputs):
+        z_mean, z_log_var = inputs
+        batch = tf.shape(z_mean)[0]
+        dim = tf.shape(z_mean)[1]
+        epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
+        return z_mean + tf.exp(0.5 * z_log_var) * epsilon
 
 """
     CNN Encoder
@@ -144,7 +105,12 @@ x = layers.Conv2D(64, 3, activation="relu", strides=2, padding="same")(x)
 x = layers.Reshape(target_shape=(64, 64))(x)
 z = layers.Dense(embedding_dim, activation="relu")(x)
 encoder = keras.Model(encoder_inputs, z, name="encoder")
-encoder.summary()
+# x = layers.Dense(128, activation="relu")(x)
+# z_mean = layers.Dense(embedding_dim, name="z_mean")(x)
+# z_log_var = layers.Dense(embedding_dim, name="z_log_var")(x)
+# z = Sampling()([z_mean, z_log_var])
+# encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
+# encoder.summary()
 
 """
     GRU Decoder
@@ -153,10 +119,6 @@ encoder.summary()
 decoder_inputs = keras.Input(shape=(1))
 features = keras.Input(shape=(64, embedding_dim))
 hidden = keras.Input(shape=(units))
-#features = keras.Input(shape=(embedding_dim))
-
-
-# context_vector, attention_weights = BahdanauAttention(features, hidden)
 # add attention below ========
 hidden_with_time_axis = tf.expand_dims(hidden, 1)
 w1 = layers.Dense(units)(features)
@@ -184,9 +146,6 @@ decoder = keras.Model(
 )
 decoder.summary()
 
-#encoder = CNN_Encoder(embedding_dim)
-#decoder = RNN_Decoder(embedding_dim, units, vocab_size, BahdanauAttention)
-
 # optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
 
 
@@ -206,6 +165,7 @@ class VAEwithAttention(keras.Model):
 
     @tf.function
     def call(self, inputs, training=False):
+        # z_mean, z_log_var, features = self.encoder(inputs)
         features = self.encoder(inputs)
         return features
 
@@ -244,14 +204,17 @@ class VAEwithAttention(keras.Model):
             #features = tf.ones(shape=(BATCH_SIZE, 64, 128))
             # print("features", features)
             # print("dec_input", dec_input)
-            for i in range(0, decoder_target.shape[1]):
-                predictions, hidden, _ = self.decoder([dec_input, features, hidden])
-                # print("predictions", predictions)
-                # print("hidden", hidden)
+            # for i in range(0, decoder_target.shape[1]):
+            predictions, hidden, _ = self.decoder([dec_input, features, hidden])
+            # if (i == 0 or i == 1):
+            #     print("correct answer", decoder_target[:,i])
+            #     print("predictions", predictions)
+            # print("predictions", predictions)
+            # print("hidden", hidden)
 
-                dec_input = tf.expand_dims(decoder_target[:, i], 1)
+            dec_input = tf.expand_dims(decoder_target[:, i], 1)
 
-                loss += loss_function(decoder_target[:,0], predictions)
+            loss += loss_function(decoder_target[:, i], predictions)
 
         trainable_variables = self.trainable_variables
         gradients = tape.gradient(loss, trainable_variables)
@@ -307,59 +270,60 @@ class VAEwithAttention(keras.Model):
     Training
 """
 
-
-
+print("create vae\n")
+vae = VAEwithAttention(encoder, decoder)
+vae.compile(optimizer=keras.optimizers.Adam(lr=0.004))
 
 #     total_loss = 0
 # for batch in range(1):
-train_x = np.empty((BATCH_SIZE, 32, 32, 5))
-train_y_1 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
-train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
-train_y_2 = np.zeros(shape=(BATCH_SIZE, MAX_WORD_LENGTH))
-random_idx = []
-for j in range(BATCH_SIZE):
-    random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
-for idx, choice in enumerate(random_idx):
-    # choice[0] is which gameplay we pick
-    # choice[1] is which step in the gameplay we pick
-    # Find list of IDs
-    print("choice 0 ", choice[0])
-    print("choice 1", choice[1])
-    each_training_sample = training_datasets[choice[0]]
-    train_x[idx,] = each_training_sample[0][choice[1]]
-    input_sequence = each_training_sample[1][choice[1]]
-    output_sequence = each_training_sample[2][choice[1]]
+for file in range(len(replay_files)):
+    train_x = np.empty((BATCH_SIZE, 32, 32, 5))
+    train_y_1 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
+    train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
+    train_y_2 = np.zeros(shape=(BATCH_SIZE, MAX_WORD_LENGTH))
+    random_idx = []
+    for j in range(BATCH_SIZE):
+        #random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
+        random_idx.append([file,  random.randint(0, 399)])
+    for idx, choice in enumerate(random_idx):
+        # choice[0] is which gameplay we pick
+        # choice[1] is which step in the gameplay we pick
+        # Find list of IDs
+        each_training_sample = training_datasets[choice[0]]
+        train_x[idx,] = each_training_sample[0][choice[1]]
+        input_sequence = each_training_sample[1][choice[1]]
+        output_sequence = each_training_sample[2][choice[1]]
 
-    # convert sequence to vector
-    decoder_input_data = np.zeros(
-        (MAX_WORD_LENGTH),
-        dtype=np.float32) # 1, 50
-    decoder_target_data = np.zeros(
-        (MAX_WORD_LENGTH),
-        dtype=np.float32)
+        # convert sequence to vector
+        decoder_input_data = np.zeros(
+            (MAX_WORD_LENGTH),
+            dtype=np.float32) # 1, 50
+        decoder_target_data = np.zeros(
+            (MAX_WORD_LENGTH),
+            dtype=np.float32)
 
-    input_sequence_list = input_sequence.split()
-    output_sequence_list = output_sequence.split()
-    assert (len(input_sequence_list) == len(output_sequence_list))
-    for word_idx in range(len(input_sequence_list)):
-        input_word = input_sequence_list[word_idx]
-        output_word = output_sequence_list[word_idx]
-        # if input_word == '(' or output_word == ')':
-        #     print(input_word, output_word)
-        # TODO : increase length of sentence
-        if word_idx == MAX_WORD_LENGTH - 1:
-            break
-        decoder_input_data[word_idx] = inference_decoder.word_to_index_mapping[input_word]
-        decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
-    train_y_1[idx, ] = decoder_input_data
+        input_sequence_list = input_sequence.split()
+        output_sequence_list = output_sequence.split()
+        assert (len(input_sequence_list) == len(output_sequence_list))
+        for word_idx in range(len(input_sequence_list)):
+            input_word = input_sequence_list[word_idx]
+            output_word = output_sequence_list[word_idx]
+            # print("input word", input_word, "output word", output_word)
+            # if input_word == '(' or output_word == ')':
+            #     print(input_word, output_word)
+            # TODO : increase length of sentence
+            decoder_input_data[word_idx] = inference_decoder.word_to_index_mapping[input_word]
+            decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
+            if word_idx == MAX_WORD_LENGTH - 1:
+                break
+            # print(decoder_target_data[word_idx])
+        train_y_1[idx, ] = decoder_input_data
 
-    train_y_2[idx ] = decoder_target_data
+        train_y_2[idx ] = decoder_target_data
+
+    vae.fit(x=train_x, y=train_y_2, epochs=5, verbose=2, batch_size=BATCH_SIZE)
 
 
-print("create vae\n")
-vae = VAEwithAttention(encoder, decoder)
-vae.compile(optimizer=keras.optimizers.Adam(lr=0.001))
-vae.fit(x=train_x, y=train_y_2, epochs = 3, verbose=2, batch_size=40)
 # batch_loss, t_loss = train_step(train_x, train_y_1, train_y_2)
 # total_loss += t_loss
 # print('Epoch {} Loss {:.6f}'.format(epoch + 1,
