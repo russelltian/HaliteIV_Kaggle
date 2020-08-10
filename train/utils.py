@@ -1,8 +1,10 @@
 import json
 import os
 from kaggle_environments.envs.halite.helpers import *
+import sys
 
 import numpy as np
+import tensorflow as tf
 
 sys.path.append("../")
 sys.path.append("../bot/")
@@ -464,6 +466,36 @@ class Inference(object):
         self.index_to_word_mapping = num_dict
         self.dictionary_size = len(self.index_to_word_mapping)
         assert(len(self.index_to_word_mapping) == len(self.word_to_index_mapping))
+
+    def attention_decode_sequence(self, model, input_image):
+        hidden = tf.zeros((1, 16))
+        features = model.encoder(input_image)
+        dec_input = [[448]]
+
+        stop_condition = False
+        decoded_sentence = '( '
+        decoded_word_length = 0
+        decoded_actions = {}
+        decoded_location = ''
+        while not stop_condition:
+            predictions, hidden, _ = model.decoder([dec_input, features, hidden])
+            sampled_token_index = np.argmax(predictions)
+            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            decoded_word_length += 1
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    decoded_word_length > 49):
+                stop_condition = True
+            elif sampled_char.isdigit():
+                decoded_location = sampled_char
+            elif decoded_location != '':
+                decoded_actions[int(decoded_location)] = sampled_char
+            dec_input[0][0] = sampled_token_index
+        print("decoded sentence ", decoded_sentence)
+        return decoded_actions
 
     def decode_sequence(self, model, input_seq, max_sequence_length):
         # Encode the input as state vectors.
