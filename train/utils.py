@@ -5,10 +5,7 @@ import sys
 
 import numpy as np
 import tensorflow as tf
-<<<<<<< HEAD
-=======
 
->>>>>>> vae with attention entire sentence
 sys.path.append("../")
 sys.path.append("../bot/")
 '''
@@ -213,6 +210,7 @@ class HaliteV2(object):
         self.cargo = None
         self.shipyard_position = None
         self.opponent_ship_position = None
+        self.meta_data = None
     def load_replay(self, path: str):
         """
                 load replay json file from halite website
@@ -441,14 +439,17 @@ class HaliteV2(object):
     def prepare_vae_encoder_input(self):
         ship_move = self.move_sequence
         input_image = []
+        meta_data = []
         assert (len(self.game_play_list) == self.total_turns - 1)
         for each_step in self.game_play_list:
             input_image.append(each_step.vae_encoder_input_image)
+            meta_data.append(each_step.vae_meta_data)
         input_image.append(self.game_play_list[0].vae_encoder_input_image)
+        meta_data.append(self.game_play_list[0].vae_meta_data)
         first_move = self.move_sequence[0]
         ship_move.append(first_move)
         assert(len(input_image) == len(ship_move) == 400)
-        return np.array(input_image), ship_move
+        return np.array(input_image), np.array(meta_data), ship_move
 
 
 class Inference(object):

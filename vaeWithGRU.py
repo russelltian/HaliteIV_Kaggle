@@ -52,7 +52,7 @@ for i, path in enumerate(replay_files):
         # training_input = np.zeros(
         #     (400, 32, 32, FEATURE_MAP_DIMENSION),
         #     dtype='float32')
-        training_input, sequence = game.prepare_vae_encoder_input()
+        training_input, _, sequence = game.prepare_vae_encoder_input()
         """
         Target ship actions:
         """

@@ -53,7 +53,7 @@ def load_raw_data(path, i, training_datasets):
                 
             Sequence is a string that record the actions of ships/shipyards
             """
-            training_input, sequence = game.prepare_vae_encoder_input()
+            training_input, _, sequence = game.prepare_vae_encoder_input()
             """
             Target ship actions:
             """

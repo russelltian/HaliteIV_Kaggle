@@ -14,10 +14,12 @@ class VaeBot(utils.Gameplay):
         super().__init__(obs, config)
         #self.vae, self.encoder, self.decoder = self.load_model()
         self.vae_encoder_input_image = self.prepare_encoder_input()
+        self.vae_meta_data = self.prepare_meta_data()
 
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
         self.vae_encoder_input_image = self.prepare_encoder_input()
+        self.vae_meta_data = self.prepare_meta_data()
 
     def normalize(self):
         """
@@ -30,6 +32,32 @@ class VaeBot(utils.Gameplay):
         encoder = tf.keras.models.load_model('vae_encoder.h5')
         decoder = tf.keras.models.load_model('vae_decoder.h5')
         return vae, encoder, decoder
+
+    def prepare_meta_data(self):
+        """
+        Three meta data
+            1) my halite amount
+            2) curent turn
+            3) leading opponent halite amount
+        :return:
+        """
+        this_turn = self
+        current_player = this_turn.board.current_player
+        opponents = this_turn.board.opponents
+        obs = self.obs
+
+        meta_data = np.zeros(shape=(1, 3), dtype='float32')
+
+        meta_data[0][0] = current_player.halite / 10.0
+
+        meta_data[0][1] = this_turn.board.step / 10.0
+
+        for opponent in opponents:
+            halite = opponent.halite
+            meta_data[0][2] = max(meta_data[0][2], halite) / 10.0
+
+        return meta_data
+
 
     def prepare_encoder_input(self):
 
