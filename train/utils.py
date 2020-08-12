@@ -511,6 +511,42 @@ class Inference(object):
         print("decoded sentence ", decoded_sentence)
         return decoded_actions
 
+    def attention_decode_sequence(self, model, input_image):
+        hidden = tf.zeros((1, 512))
+        features = model.encoder(input_image)
+        dec_input = [[448]]
+
+        stop_condition = False
+        decoded_sentence = '( '
+        decoded_word_length = 0
+        decoded_actions = {}
+        decoded_location = ''
+        while not stop_condition:
+            predictions, hidden, _ = model.decoder([dec_input, features, hidden])
+            #print("predictions is", predictions)
+            #print("predictions length", len(predictions[0]))
+            #print("prediction is", predictions[0])
+            sampled_token_index = tf.random.categorical(predictions, 1)[0][0].numpy()
+            #sampled_token_index = np.argmax(predictions[0])
+            print("sampled token is", sampled_token_index)
+            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            decoded_word_length += 1
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    decoded_word_length > 49):
+                stop_condition = True
+            elif sampled_char.isdigit():
+                decoded_location = sampled_char
+            elif decoded_location != '':
+                decoded_actions[int(decoded_location)] = sampled_char
+            dec_input[0][0] = int(sampled_token_index)
+            print("dec_input is", dec_input[0][0])
+        print("decoded sentence ", decoded_sentence)
+        return decoded_actions
+
     def decode_sequence(self, model, input_seq, max_sequence_length):
         # Encode the input as state vectors.
         z_mean, z_log_var, z = model.encoder(input_seq)
