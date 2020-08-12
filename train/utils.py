@@ -1,9 +1,11 @@
 import json
 import os
 from kaggle_environments.envs.halite.helpers import *
+import sys
 
 import numpy as np
 import tensorflow as tf
+
 sys.path.append("../")
 sys.path.append("../bot/")
 '''
@@ -208,6 +210,7 @@ class HaliteV2(object):
         self.cargo = None
         self.shipyard_position = None
         self.opponent_ship_position = None
+        self.meta_data = None
     def load_replay(self, path: str):
         """
                 load replay json file from halite website
@@ -436,14 +439,17 @@ class HaliteV2(object):
     def prepare_vae_encoder_input(self):
         ship_move = self.move_sequence
         input_image = []
+        meta_data = []
         assert (len(self.game_play_list) == self.total_turns - 1)
         for each_step in self.game_play_list:
             input_image.append(each_step.vae_encoder_input_image)
+            meta_data.append(each_step.vae_meta_data)
         input_image.append(self.game_play_list[0].vae_encoder_input_image)
+        meta_data.append(self.game_play_list[0].vae_meta_data)
         first_move = self.move_sequence[0]
         ship_move.append(first_move)
         assert(len(input_image) == len(ship_move) == 400)
-        return np.array(input_image), ship_move
+        return np.array(input_image), np.array(meta_data), ship_move
 
 
 class Inference(object):
@@ -464,11 +470,82 @@ class Inference(object):
         self.index_to_word_mapping = num_dict
         self.dictionary_size = len(self.index_to_word_mapping)
         assert(len(self.index_to_word_mapping) == len(self.word_to_index_mapping))
-
         # keras tokenizer
         tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=len(self.index_to_word_mapping),
                                                   filters='!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ')
         # tokenizer.fit_on_texts(train_captions)
+
+    def attention_decode_sequence(self, model, input_image):
+        hidden = tf.zeros((1, 512))
+        features = model.encoder(input_image)
+        dec_input = [[448]]
+
+        stop_condition = False
+        decoded_sentence = '( '
+        decoded_word_length = 0
+        decoded_actions = {}
+        decoded_location = ''
+        while not stop_condition:
+            predictions, hidden, _ = model.decoder([dec_input, features, hidden])
+            #print("predictions is", predictions)
+            #print("predictions length", len(predictions[0]))
+            #print("prediction is", predictions[0])
+            sampled_token_index = tf.random.categorical(predictions, 1)[0][0].numpy()
+            #sampled_token_index = np.argmax(predictions[0])
+            print("sampled token is", sampled_token_index)
+            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            decoded_word_length += 1
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    decoded_word_length > 49):
+                stop_condition = True
+            elif sampled_char.isdigit():
+                decoded_location = sampled_char
+            elif decoded_location != '':
+                decoded_actions[int(decoded_location)] = sampled_char
+            dec_input[0][0] = int(sampled_token_index)
+            print("dec_input is", dec_input[0][0])
+        print("decoded sentence ", decoded_sentence)
+        return decoded_actions
+
+    def attention_decode_sequence(self, model, input_image):
+        hidden = tf.zeros((1, 512))
+        features = model.encoder(input_image)
+        dec_input = [[448]]
+
+        stop_condition = False
+        decoded_sentence = '( '
+        decoded_word_length = 0
+        decoded_actions = {}
+        decoded_location = ''
+        while not stop_condition:
+            predictions, hidden, _ = model.decoder([dec_input, features, hidden])
+            #print("predictions is", predictions)
+            #print("predictions length", len(predictions[0]))
+            #print("prediction is", predictions[0])
+            sampled_token_index = tf.random.categorical(predictions, 1)[0][0].numpy()
+            #sampled_token_index = np.argmax(predictions[0])
+            print("sampled token is", sampled_token_index)
+            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
+            decoded_sentence += sampled_char
+            decoded_sentence += " "
+            decoded_word_length += 1
+            # Exit condition: either hit max length
+            # or find stop character.
+            if (sampled_char == ')' or
+                    decoded_word_length > 49):
+                stop_condition = True
+            elif sampled_char.isdigit():
+                decoded_location = sampled_char
+            elif decoded_location != '':
+                decoded_actions[int(decoded_location)] = sampled_char
+            dec_input[0][0] = int(sampled_token_index)
+            print("dec_input is", dec_input[0][0])
+        print("decoded sentence ", decoded_sentence)
+        return decoded_actions
 
     def decode_sequence(self, model, input_seq, max_sequence_length):
         # Encode the input as state vectors.

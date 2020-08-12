@@ -14,9 +14,12 @@ class VaeBot(utils.Gameplay):
         super().__init__(obs, config)
         #self.vae, self.encoder, self.decoder = self.load_model()
         self.vae_encoder_input_image = self.prepare_encoder_input()
+        self.vae_meta_data = self.prepare_meta_data()
 
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
+        self.vae_encoder_input_image = self.prepare_encoder_input()
+        self.vae_meta_data = self.prepare_meta_data()
 
     def normalize(self):
         """
@@ -29,6 +32,32 @@ class VaeBot(utils.Gameplay):
         encoder = tf.keras.models.load_model('vae_encoder.h5')
         decoder = tf.keras.models.load_model('vae_decoder.h5')
         return vae, encoder, decoder
+
+    def prepare_meta_data(self):
+        """
+        Three meta data
+            1) my halite amount
+            2) curent turn
+            3) leading opponent halite amount
+        :return:
+        """
+        this_turn = self
+        current_player = this_turn.board.current_player
+        opponents = this_turn.board.opponents
+        obs = self.obs
+
+        meta_data = np.zeros(shape=(1, 3), dtype='float32')
+
+        meta_data[0][0] = current_player.halite / 10.0
+
+        meta_data[0][1] = this_turn.board.step / 10.0
+
+        for opponent in opponents:
+            halite = opponent.halite
+            meta_data[0][2] = max(meta_data[0][2], halite) / 10.0
+
+        return meta_data
+
 
     def prepare_encoder_input(self):
 
@@ -57,15 +86,13 @@ class VaeBot(utils.Gameplay):
         # Load halite
         for i in range(size):
             for j in range(size):
-                input_image[0][i + pad_offset][j + pad_offset][0] = obs["halite"][i * size + j] * 10 / 100
+                input_image[0][i + pad_offset][j + pad_offset][0] = obs["halite"][i * size + j] / 10
         # Load current player and cargo
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(ship.position))
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][1] = 10.0
-            cargo = self.my_cargo[position[0]][position[1]] * 10
-            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = cargo * 10 / 100
+            input_image[0][position[0] + pad_offset][position[1] + pad_offset][2] = self.my_cargo[position[0]][position[1]] / 10
         # 4) ship yard
-
         for shipyard in current_player.shipyards:
             position = self.convert_kaggle2D_to_upperleft2D(this_turn.board_size, list(shipyard.position))
             input_image[0][position[0] + pad_offset][position[1] + pad_offset][3] = 10.0
@@ -151,7 +178,7 @@ class VaeBot(utils.Gameplay):
         vae = tf.saved_model.load('vae_new')
         input_image = self.vae_encoder_input_image
         inference_decoder = utils.Inference(board_size=21)
-        result = inference_decoder.decode_sequence(vae, input_image, 50)
+        result = inference_decoder.attention_decode_sequence(vae, input_image)
         print("decoded actions ", result)
         # Assign actions to shipyard or ships with exact location matching
         actions = {}
