@@ -9,7 +9,7 @@ import time
 from train import utils
 from multiprocessing import Pool
 
-training_datasets = []
+# training_datasets = []
 vocab_size = 450
 MAX_WORD_LENGTH = 50
 units = 512
@@ -77,8 +77,10 @@ def load_raw_data(path):
 
 # pool = Pool()
 # pool.map(load_raw_data, replay_files)
-for i in range(len(replay_files)):
-    load_raw_data(replay_files[i])
+# for i in range(len(replay_files)):
+#     if i == 1:
+#         break
+#     load_raw_data(replay_files[i])
 
 
 """
@@ -239,54 +241,62 @@ vae.compile(optimizer=keras.optimizers.Adam(lr=0.004))
 
 #     total_loss = 0
 # for batch in range(1):
-for file in range(len(replay_files)):
-    train_x = np.empty((BATCH_SIZE, 32, 32, 5))
-    train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
-    train_x_meta = np.empty(shape=(BATCH_SIZE, METADATA_DIM))
+total_file = len(replay_files)
+LIMIT_PER_TRAIN = 2
+current_file = 0
+while current_file + LIMIT_PER_TRAIN < total_file:
+    training_datasets = []
+    for i in range(current_file, current_file+LIMIT_PER_TRAIN):
+        load_raw_data(replay_files[i])
+    current_file += LIMIT_PER_TRAIN
+    for file in range(LIMIT_PER_TRAIN):
+        train_x = np.empty((BATCH_SIZE, 32, 32, 5))
+        train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
+        train_x_meta = np.empty(shape=(BATCH_SIZE, METADATA_DIM))
 
-    random_idx = []
-    for j in range(BATCH_SIZE):
-        #random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
-        random_idx.append([file,  random.randint(0, 399)])
-    for idx, choice in enumerate(random_idx):
-        # choice[0] is which gameplay we pick
-        # choice[1] is which step in the gameplay we pick
-        # Find list of IDs
-        each_training_sample = training_datasets[choice[0]]
-        train_x[idx,] = each_training_sample[0][choice[1]]
-        train_x_meta[idx,] = each_training_sample[1][choice[1]]
-        input_sequence = each_training_sample[2][choice[1]]
-        output_sequence = each_training_sample[3][choice[1]]
+        random_idx = []
+        for j in range(BATCH_SIZE):
+            #random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
+            random_idx.append([file,  j])
+        for idx, choice in enumerate(random_idx):
+            # choice[0] is which gameplay we pick
+            # choice[1] is which step in the gameplay we pick
+            # Find list of IDs
+            each_training_sample = training_datasets[choice[0]]
+            train_x[idx,] = each_training_sample[0][choice[1]]
+            train_x_meta[idx,] = each_training_sample[1][choice[1]]
+            input_sequence = each_training_sample[2][choice[1]]
+            output_sequence = each_training_sample[3][choice[1]]
 
 
-        # convert sequence to vector
-        decoder_input_data = np.zeros(
-            (MAX_WORD_LENGTH),
-            dtype=np.float32) # 1, 50
-        decoder_target_data = np.zeros(
-            (MAX_WORD_LENGTH),
-            dtype=np.float32)
+            # convert sequence to vector
+            decoder_input_data = np.zeros(
+                (MAX_WORD_LENGTH),
+                dtype=np.float32) # 1, 50
+            decoder_target_data = np.zeros(
+                (MAX_WORD_LENGTH),
+                dtype=np.float32)
 
-        input_sequence_list = input_sequence.split()
-        output_sequence_list = output_sequence.split()
-        assert (len(input_sequence_list) == len(output_sequence_list))
+            input_sequence_list = input_sequence.split()
+            output_sequence_list = output_sequence.split()
+            assert (len(input_sequence_list) == len(output_sequence_list))
 
-        for word_idx in range(len(output_sequence_list)):
+            for word_idx in range(len(output_sequence_list)):
 
-            output_word = output_sequence_list[word_idx]
-            # print("input word", input_word, "output word", output_word)
-            # if input_word == '(' or output_word == ')':
-            #     print(input_word, output_word)
-            # TODO : increase length of sentence
+                output_word = output_sequence_list[word_idx]
+                # print("input word", input_word, "output word", output_word)
+                # if input_word == '(' or output_word == ')':
+                #     print(input_word, output_word)
+                # TODO : increase length of sentence
 
-            decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
-            if word_idx == MAX_WORD_LENGTH - 1:
-                break
-            # print(decoder_target_data[word_idx])
+                decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
+                if word_idx == MAX_WORD_LENGTH - 1:
+                    break
+                # print(decoder_target_data[word_idx])
 
-        train_y_2[idx ] = decoder_target_data
+            train_y_2[idx ] = decoder_target_data
 
-    vae.fit([train_x, train_x_meta, train_y_2], epochs=3, verbose=2, batch_size=BATCH_SIZE)
+        vae.fit([train_x, train_x_meta, train_y_2], epochs=3, verbose=2, batch_size=BATCH_SIZE)
 
 
 
