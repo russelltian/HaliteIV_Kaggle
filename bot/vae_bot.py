@@ -120,20 +120,20 @@ class VaeBot(utils.Gameplay):
             and action is one of "CONVERT", "SPAWN", "NORTH", "SOUTH", "EAST", "WEST"
             ("SPAWN" being only applicable to shipyards and the others only to ships).
         """
-        if obs.step == 1:
+        if obs.step == 0:
             actions = {}
             this_turn = self
             current_player = this_turn.board.current_player
-            for ship in current_player.ships:
-                actions[ship.id] = "CONVERT"
+            # for ship in current_player.ships:
+            #     actions[ship.id] = "CONVERT"
             return actions
-        elif obs.step == 2:
-            actions = {}
-            this_turn = self
-            current_player = this_turn.board.current_player
-            for shipyard in current_player.shipyards:
-                actions[shipyard.id] = 'SPAWN'
-            return actions
+        # elif obs.step == 2:
+        #     actions = {}
+        #     this_turn = self
+        #     current_player = this_turn.board.current_player
+        #     for shipyard in current_player.shipyards:
+        #         actions[shipyard.id] = 'SPAWN'
+        #     return actions
         # elif obs.step == 3:
         #     actions = {}
         #     this_turn = self
@@ -177,18 +177,20 @@ class VaeBot(utils.Gameplay):
         size = self.board_size
         vae = tf.saved_model.load('vae_new')
         input_image = self.vae_encoder_input_image
+        meta_data = self.vae_meta_data
         inference_decoder = utils.Inference(board_size=21)
-        result = inference_decoder.attention_decode_sequence(vae, input_image)
+        result = inference_decoder.attention_decode_sequence(vae, input_image, meta_data)
         print("decoded actions ", result)
         # Assign actions to shipyard or ships with exact location matching
         actions = {}
-        for shipyard in current_player.shipyards:
-            position = self.convert_kaggle2D_to_kaggle1D(size, shipyard.position)
-            print("shipyard position is", position)
-            if position in result:
-                if result[position] == 'SPAWN':
-                    actions[shipyard.id] = result[position]
-                    del result[position]
+        if len(current_player.shipyards) > 0:
+            for shipyard in current_player.shipyards:
+                position = self.convert_kaggle2D_to_kaggle1D(size, shipyard.position)
+                print("shipyard position is", position)
+                if position in result:
+                    if result[position] == 'SPAWN':
+                        actions[shipyard.id] = result[position]
+                        del result[position]
         unassigned_ships = {}
         for ship in current_player.ships:
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
@@ -207,7 +209,7 @@ class VaeBot(utils.Gameplay):
         for id, pos in unassigned_ships.items():
             valid_action = self.find_actions_in_ship_proximity(size, result, pos)
             if valid_action:
-                if valid_action != 'NO':
+                if valid_action != 'NO' and valid_action != 'SPAWN':
                     actions[id] = valid_action
                     print("assigned valid action", valid_action)
 

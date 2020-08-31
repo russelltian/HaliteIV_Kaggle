@@ -357,14 +357,17 @@ class HaliteV2(object):
                         shipyard_id_position.append([each_shipyard_id, each_shipyard_pos])
                     # sort shipyard based on location
                     shipyard_id_position = sorted(shipyard_id_position, key=lambda x: x[1])
-                    for each_shipyard in shipyard_id_position:
-                        # id, position
-                        sequence += str(each_shipyard[1])
-                        if each_shipyard[0] in ship_shipyard_move:
-                            assert (ship_shipyard_move[each_shipyard[0]] == "SPAWN")
-                            sequence += " SPAWN "
-                        else:
-                            sequence += " NO "
+                    print(shipyard_id_position)
+                    if ship_id_position is not None and len(ship_id_position) > 0:
+                        for each_shipyard in shipyard_id_position:
+                            # id, position
+                            sequence += str(each_shipyard[1])
+                            print(each_shipyard)
+                            if each_shipyard[0] in ship_shipyard_move:
+                                assert (ship_shipyard_move[each_shipyard[0]] == "SPAWN")
+                                sequence += " SPAWN "
+                            else:
+                                sequence += " NO "
 
                     for each_ship_id, each_ship_info in player_ship.items():
                         assert(0 <= each_ship_info[0] < map_size**2)
@@ -475,9 +478,9 @@ class Inference(object):
                                                   filters='!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ')
         # tokenizer.fit_on_texts(train_captions)
 
-    def attention_decode_sequence(self, model, input_image):
+    def attention_decode_sequence(self, model, input_image, meta_data):
         hidden = tf.zeros((1, 512))
-        features = model.encoder(input_image)
+        features = model.encoder([input_image, meta_data])
         dec_input = [[448]]
 
         stop_condition = False
@@ -492,7 +495,7 @@ class Inference(object):
             #print("prediction is", predictions[0])
             sampled_token_index = tf.random.categorical(predictions, 1)[0][0].numpy()
             #sampled_token_index = np.argmax(predictions[0])
-            print("sampled token is", sampled_token_index)
+            #print("sampled token is", sampled_token_index)
             sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
             decoded_sentence += sampled_char
             decoded_sentence += " "
@@ -507,43 +510,7 @@ class Inference(object):
             elif decoded_location != '':
                 decoded_actions[int(decoded_location)] = sampled_char
             dec_input[0][0] = int(sampled_token_index)
-            print("dec_input is", dec_input[0][0])
-        print("decoded sentence ", decoded_sentence)
-        return decoded_actions
-
-    def attention_decode_sequence(self, model, input_image):
-        hidden = tf.zeros((1, 512))
-        features = model.encoder(input_image)
-        dec_input = [[448]]
-
-        stop_condition = False
-        decoded_sentence = '( '
-        decoded_word_length = 0
-        decoded_actions = {}
-        decoded_location = ''
-        while not stop_condition:
-            predictions, hidden, _ = model.decoder([dec_input, features, hidden])
-            #print("predictions is", predictions)
-            #print("predictions length", len(predictions[0]))
-            #print("prediction is", predictions[0])
-            sampled_token_index = tf.random.categorical(predictions, 1)[0][0].numpy()
-            #sampled_token_index = np.argmax(predictions[0])
-            print("sampled token is", sampled_token_index)
-            sampled_char = self.index_to_word_mapping[int(sampled_token_index)]
-            decoded_sentence += sampled_char
-            decoded_sentence += " "
-            decoded_word_length += 1
-            # Exit condition: either hit max length
-            # or find stop character.
-            if (sampled_char == ')' or
-                    decoded_word_length > 49):
-                stop_condition = True
-            elif sampled_char.isdigit():
-                decoded_location = sampled_char
-            elif decoded_location != '':
-                decoded_actions[int(decoded_location)] = sampled_char
-            dec_input[0][0] = int(sampled_token_index)
-            print("dec_input is", dec_input[0][0])
+            # print("dec_input is", dec_input[0][0])
         print("decoded sentence ", decoded_sentence)
         return decoded_actions
 
