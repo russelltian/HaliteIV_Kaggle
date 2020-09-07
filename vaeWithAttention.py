@@ -176,7 +176,7 @@ class VAEwithAttention(keras.Model):
         self.decoder = decoder
 
     @tf.function
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, experimental_relax_shapes=True):
         # z_mean, z_log_var, features = self.encoder(inputs)
         features = self.encoder(inputs)
         return features

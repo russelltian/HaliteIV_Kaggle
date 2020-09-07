@@ -15,6 +15,7 @@ class VaeBot(utils.Gameplay):
         #self.vae, self.encoder, self.decoder = self.load_model()
         self.vae_encoder_input_image = self.prepare_encoder_input()
         self.vae_meta_data = self.prepare_meta_data()
+        self.vae = None
 
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
@@ -175,15 +176,29 @@ class VaeBot(utils.Gameplay):
         #         input_image[0][position[0] + pad_offset][position[1] + pad_offset][4] = 1 * 10
         # Define sampling models
         size = self.board_size
-        vae = tf.saved_model.load('vae_attention')
+        if self.vae is None:
+            self.vae = tf.saved_model.load('vae_new')
+        vae = self.vae
         input_image = self.vae_encoder_input_image
         meta_data = self.vae_meta_data
         inference_decoder = utils.Inference(board_size=21)
+        #meta_data = tf.convert_to_tensor(meta_data, dtype=tf.float32)
+        #input_image = tf.convert_to_tensor(input_image, dtype=tf.float32)
         result = inference_decoder.attention_decode_sequence(vae, input_image, meta_data)
         print("decoded actions ", result)
         # Assign actions to shipyard or ships with exact location matching
         actions = {}
+        if len(current_player.shipyards) == 0:
+            for this_ship in current_player.ships:
+                actions[this_ship.id] = 'CONVERT'
+                break
+
         if len(current_player.shipyards) > 0:
+            for shipyard in current_player.shipyards:
+                if len(current_player.ships) == 0:
+                    actions[shipyard.id] = 'SPAWN'
+                    break
+
             for shipyard in current_player.shipyards:
                 position = self.convert_kaggle2D_to_kaggle1D(size, shipyard.position)
                 print("shipyard position is", position)
@@ -193,6 +208,8 @@ class VaeBot(utils.Gameplay):
                         del result[position]
         unassigned_ships = {}
         for ship in current_player.ships:
+            if ship.id in actions and actions[ship.id] == 'CONVERT':
+                continue
             position = self.convert_kaggle2D_to_kaggle1D(size, ship.position)
             print("ship position is", position)
             if position in result and result[position] != 'SPAWN':
