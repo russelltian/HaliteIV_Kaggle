@@ -11,14 +11,14 @@ from multiprocessing import Pool, Process, Manager
 
 # training_datasets = []
 vocab_size = 450
-MAX_WORD_LENGTH = 50
+MAX_WORD_LENGTH = 75
 units = 512
 embedding_dim = 256
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
 BATCH_SIZE = 200
 DATASET_SIZE = 400
-METADATA_DIM = 3 # my halite amount, turns left, most leading opponent halite amount
+METADATA_DIM = 4 # my halite amount, current turn, most leading opponent halite amount, # of my entities
 
 
 """
@@ -207,6 +207,8 @@ class VAEwithAttention(keras.Model):
 
             loss_ = loss_object(real, pred)
 
+            # print("!!!!loss_ is like", loss_)
+
             # mask = tf.cast(mask, dtype=loss_.dtype)
             # loss_ *= mask
 
@@ -225,8 +227,9 @@ class VAEwithAttention(keras.Model):
             for i in range(0, decoder_target.shape[1]):
                 predictions, hidden, _ = self.decoder([dec_input, features, hidden])
                 dec_input = tf.expand_dims(decoder_target[:, i], 1)
+                # print("decoder_target is", decoder_target[:, i])
+                # print("predictions are", predictions)
                 loss += loss_function(decoder_target[:, i], predictions)
-
 
         trainable_variables = self.trainable_variables
         gradients = tape.gradient(loss, trainable_variables)
@@ -313,6 +316,7 @@ while current_file + LIMIT_PER_TRAIN < total_file:
           dirPath = "" + str(current_file)
           print("store model ")
           tf.saved_model.save(vae, dirPath)
+
 
 
 

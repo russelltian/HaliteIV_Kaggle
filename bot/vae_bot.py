@@ -17,6 +17,7 @@ class VaeBot(utils.Gameplay):
         self.vae_meta_data = self.prepare_meta_data()
         self.vae = None
 
+
     def reset_board(self, obs, config):
         super().reset_board(obs, config)
         self.vae_encoder_input_image = self.prepare_encoder_input()
@@ -40,6 +41,7 @@ class VaeBot(utils.Gameplay):
             1) my halite amount
             2) curent turn
             3) leading opponent halite amount
+            4) # of my entities
         :return:
         """
         this_turn = self
@@ -47,7 +49,7 @@ class VaeBot(utils.Gameplay):
         opponents = this_turn.board.opponents
         obs = self.obs
 
-        meta_data = np.zeros(shape=(1, 3), dtype='float32')
+        meta_data = np.zeros(shape=(1, 4), dtype='float32')
 
         meta_data[0][0] = current_player.halite / 10.0
 
@@ -56,6 +58,8 @@ class VaeBot(utils.Gameplay):
         for opponent in opponents:
             halite = opponent.halite
             meta_data[0][2] = max(meta_data[0][2], halite) / 10.0
+
+        meta_data[0][3] = len(current_player.shipyards) + len(current_player.ships)
 
         return meta_data
 
@@ -179,6 +183,7 @@ class VaeBot(utils.Gameplay):
         if self.vae is None:
             self.vae = tf.saved_model.load('vae_new')
         vae = self.vae
+
         input_image = self.vae_encoder_input_image
         meta_data = self.vae_meta_data
         inference_decoder = utils.Inference(board_size=21)

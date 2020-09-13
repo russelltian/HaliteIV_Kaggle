@@ -32,6 +32,7 @@ class Gameplay(object):
         # self.my_shipyards_location = np.zeros((size, size), np.float32)  # 2D map of your shipyards location
         # # opponents ship locations
         # self.opponent_ships_location = np.zeros((size, size), np.float32)
+        self.MAX_WORD_LENGTH = 75
 
 
         # Store information (Note, if this flow got updated, also update reset board function)
@@ -505,7 +506,7 @@ class Inference(object):
             # Exit condition: either hit max length
             # or find stop character.
             if (sampled_char == ')' or
-                    decoded_word_length > 49):
+                    decoded_word_length >= 74):
                 stop_condition = True
             elif sampled_char.isdigit():
                 decoded_location = sampled_char

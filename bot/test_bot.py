@@ -1,7 +1,8 @@
 from kaggle_environments import evaluate, make
 from bot import vae_bot
 
-env = make("halite", configuration={"size": 21, "episodeSteps": 400}, debug=True)
+
+env = make("halite", configuration={"size": 21, "episodeSteps": 30}, debug=True)
 
 trainer = env.train([None, "random", "random", "random"])
 observation = trainer.reset()
