@@ -358,12 +358,12 @@ class HaliteV2(object):
                         shipyard_id_position.append([each_shipyard_id, each_shipyard_pos])
                     # sort shipyard based on location
                     shipyard_id_position = sorted(shipyard_id_position, key=lambda x: x[1])
-                    print(shipyard_id_position)
+                    #print(shipyard_id_position)
                     if ship_id_position is not None and len(ship_id_position) > 0:
                         for each_shipyard in shipyard_id_position:
                             # id, position
                             sequence += str(each_shipyard[1])
-                            print(each_shipyard)
+                            #print(each_shipyard)
                             if each_shipyard[0] in ship_shipyard_move:
                                 assert (ship_shipyard_move[each_shipyard[0]] == "SPAWN")
                                 sequence += " SPAWN "
@@ -489,8 +489,10 @@ class Inference(object):
         decoded_word_length = 0
         decoded_actions = {}
         decoded_location = ''
+        hidden = tf.convert_to_tensor(hidden, dtype=tf.float32)
         while not stop_condition:
-            predictions, hidden, _ = model.decoder([dec_input, features, hidden])
+            dec_input_tf = tf.convert_to_tensor(dec_input, dtype=tf.float32)
+            predictions, hidden, _ = model.decoder([dec_input_tf, features, hidden])
             #print("predictions is", predictions)
             #print("predictions length", len(predictions[0]))
             #print("prediction is", predictions[0])

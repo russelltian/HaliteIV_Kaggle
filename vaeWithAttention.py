@@ -7,16 +7,16 @@ import os
 from tensorflow.python.keras.layers import Dense
 import time
 from train import utils
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, Manager
 
-training_datasets = []
+# training_datasets = []
 vocab_size = 450
 MAX_WORD_LENGTH = 75
 units = 512
 embedding_dim = 256
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
-BATCH_SIZE = 100
+BATCH_SIZE = 200
 DATASET_SIZE = 400
 METADATA_DIM = 4 # my halite amount, current turn, most leading opponent halite amount, # of my entities
 
@@ -24,22 +24,25 @@ METADATA_DIM = 4 # my halite amount, current turn, most leading opponent halite 
 """
     Data Extraction
 """
-PATH = 'train/top_replay/'
-
+PATH = 'train/top_replay'
+manager = Manager()
 replay_files = []
 # r=root, d=directories, f = files
 for r, d, f in os.walk(PATH):
     for file in f:
         if '.json' in file:
             replay_files.append(os.path.join(r, file))
-for f in replay_files:
-    print(f)
+print('has total training file of ', len(replay_files))
 
 
-def load_raw_data(path):
+def load_raw_data(path, training_datasets):
     # for i, path in enumerate(replay_files):
-    game = utils.HaliteV2(path)
-    print("loading file from ", path)
+    try:
+      game = utils.HaliteV2(path)
+    except Exception as e:
+      print(e)
+      return
+    #print("loading file from ", path)
     if game.game_play_list is not None:
         """
         Five features as training input:
@@ -77,8 +80,10 @@ def load_raw_data(path):
 
 # pool = Pool()
 # pool.map(load_raw_data, replay_files)
-for i in range(len(replay_files)):
-    load_raw_data(replay_files[i])
+# for i in range(len(replay_files)):
+#     if i == 1:
+#         break
+#     load_raw_data(replay_files[i])
 
 
 """
@@ -174,7 +179,7 @@ class VAEwithAttention(keras.Model):
         self.decoder = decoder
 
     @tf.function
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, experimental_relax_shapes=True):
         # z_mean, z_log_var, features = self.encoder(inputs)
         features = self.encoder(inputs)
         return features
@@ -242,54 +247,77 @@ vae.compile(optimizer=keras.optimizers.Adam(lr=0.004))
 
 #     total_loss = 0
 # for batch in range(1):
-for file in range(len(replay_files)):
-    train_x = np.empty((BATCH_SIZE, 32, 32, 5))
-    train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
-    train_x_meta = np.empty(shape=(BATCH_SIZE, METADATA_DIM))
+total_file = len(replay_files)
+LIMIT_PER_TRAIN = 10
+current_file = 0
 
-    random_idx = []
-    for j in range(BATCH_SIZE):
-        #random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
-        random_idx.append([file,  j])
-    for idx, choice in enumerate(random_idx):
-        # choice[0] is which gameplay we pick
-        # choice[1] is which step in the gameplay we pick
-        # Find list of IDs
-        each_training_sample = training_datasets[choice[0]]
-        train_x[idx,] = each_training_sample[0][choice[1]]
-        train_x_meta[idx,] = each_training_sample[1][choice[1]]
-        input_sequence = each_training_sample[2][choice[1]]
-        output_sequence = each_training_sample[3][choice[1]]
+while current_file + LIMIT_PER_TRAIN < total_file:
+    print("at current file: ", current_file)
+    training_datasets = Manager().list()
+    process_list = []
+    p = None
+    for i in range(current_file, current_file+LIMIT_PER_TRAIN):
+        p = Process(target=load_raw_data, args=(replay_files[i], training_datasets))
+        p.start()
+        process_list.append(p)
+    for p in process_list:
+        p.join()
+    print(len(training_datasets))
+    current_file += LIMIT_PER_TRAIN
+    for file in range(len(training_datasets)):
+        train_x = np.empty((BATCH_SIZE, 32, 32, 5))
+        train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
+        train_x_meta = np.empty(shape=(BATCH_SIZE, METADATA_DIM))
 
-        # print("output_sequence looks like", output_sequence)
+        random_idx = []
+        for j in range(BATCH_SIZE):
+            #random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
+            random_idx.append([file,  j])
+        for idx, choice in enumerate(random_idx):
+            # choice[0] is which gameplay we pick
+            # choice[1] is which step in the gameplay we pick
+            # Find list of IDs
+            each_training_sample = training_datasets[choice[0]]
+            train_x[idx,] = each_training_sample[0][choice[1]]
+            train_x_meta[idx,] = each_training_sample[1][choice[1]]
+            input_sequence = each_training_sample[2][choice[1]]
+            output_sequence = each_training_sample[3][choice[1]]
 
 
-        # convert sequence to vector
-        decoder_target_data = np.full(
-            (MAX_WORD_LENGTH), 449, #449 is the ")" EOS symbol
-            dtype=np.float32)
+            # convert sequence to vector
+            decoder_input_data = np.zeros(
+                (MAX_WORD_LENGTH),
+                dtype=np.float32) # 1, 50
+            decoder_target_data = np.zeros(
+                (MAX_WORD_LENGTH),
+                dtype=np.float32)
 
-        input_sequence_list = input_sequence.split()
-        output_sequence_list = output_sequence.split()
-        assert (len(input_sequence_list) == len(output_sequence_list))
+            input_sequence_list = input_sequence.split()
+            output_sequence_list = output_sequence.split()
+            assert (len(input_sequence_list) == len(output_sequence_list))
 
-        for word_idx in range(len(output_sequence_list)):
+            for word_idx in range(len(output_sequence_list)):
 
-            output_word = output_sequence_list[word_idx]
-            # print("input word", input_word, "output word", output_word)
-            # if input_word == '(' or output_word == ')':
-            #     print(input_word, output_word)
-            # TODO : increase length of sentence
+                output_word = output_sequence_list[word_idx]
+                # print("input word", input_word, "output word", output_word)
+                # if input_word == '(' or output_word == ')':
+                #     print(input_word, output_word)
+                # TODO : increase length of sentence
 
-            decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
-            if word_idx == MAX_WORD_LENGTH - 2:
-                # break at second last so that the last WORD remains as the EOS
-                break
-            # print(decoder_target_data[word_idx])
+                decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
+                if word_idx == MAX_WORD_LENGTH - 1:
+                    break
+                # print(decoder_target_data[word_idx])
 
-        train_y_2[idx ] = decoder_target_data
+            train_y_2[idx ] = decoder_target_data
 
-    vae.fit([train_x, train_x_meta, train_y_2], epochs=3, verbose=2, batch_size=BATCH_SIZE)
+        vae.fit([train_x, train_x_meta, train_y_2], epochs=10, verbose=2, batch_size=BATCH_SIZE)
+        if current_file % 200 == 0:
+          dirPath = "" + str(current_file)
+          print("store model ")
+          tf.saved_model.save(vae, dirPath)
+
+
 
 
 
@@ -299,5 +327,6 @@ for file in range(len(replay_files)):
 #                                     total_loss))
 print("saving model")
 tf.saved_model.save(vae, 'bot/vae_attention')
+tf.saved_model.save(vae, 'drive/My Drive/model')
 
 print("finished training")
