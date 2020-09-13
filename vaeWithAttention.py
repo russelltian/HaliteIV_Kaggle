@@ -11,14 +11,14 @@ from multiprocessing import Pool
 
 training_datasets = []
 vocab_size = 450
-MAX_WORD_LENGTH = 50
+MAX_WORD_LENGTH = 75
 units = 512
 embedding_dim = 256
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
 BATCH_SIZE = 100
 DATASET_SIZE = 400
-METADATA_DIM = 3 # my halite amount, turns left, most leading opponent halite amount
+METADATA_DIM = 4 # my halite amount, current turn, most leading opponent halite amount, # of my entities
 
 
 """
@@ -202,6 +202,8 @@ class VAEwithAttention(keras.Model):
 
             loss_ = loss_object(real, pred)
 
+            # print("!!!!loss_ is like", loss_)
+
             # mask = tf.cast(mask, dtype=loss_.dtype)
             # loss_ *= mask
 
@@ -220,8 +222,9 @@ class VAEwithAttention(keras.Model):
             for i in range(0, decoder_target.shape[1]):
                 predictions, hidden, _ = self.decoder([dec_input, features, hidden])
                 dec_input = tf.expand_dims(decoder_target[:, i], 1)
+                # print("decoder_target is", decoder_target[:, i])
+                # print("predictions are", predictions)
                 loss += loss_function(decoder_target[:, i], predictions)
-
 
         trainable_variables = self.trainable_variables
         gradients = tape.gradient(loss, trainable_variables)
@@ -247,7 +250,7 @@ for file in range(len(replay_files)):
     random_idx = []
     for j in range(BATCH_SIZE):
         #random_idx.append([random.randint(0, len(training_datasets) - 1), random.randint(0, 399)])
-        random_idx.append([file,  random.randint(0, 399)])
+        random_idx.append([file,  j])
     for idx, choice in enumerate(random_idx):
         # choice[0] is which gameplay we pick
         # choice[1] is which step in the gameplay we pick
@@ -258,13 +261,12 @@ for file in range(len(replay_files)):
         input_sequence = each_training_sample[2][choice[1]]
         output_sequence = each_training_sample[3][choice[1]]
 
+        # print("output_sequence looks like", output_sequence)
+
 
         # convert sequence to vector
-        decoder_input_data = np.zeros(
-            (MAX_WORD_LENGTH),
-            dtype=np.float32) # 1, 50
-        decoder_target_data = np.zeros(
-            (MAX_WORD_LENGTH),
+        decoder_target_data = np.full(
+            (MAX_WORD_LENGTH), 449, #449 is the ")" EOS symbol
             dtype=np.float32)
 
         input_sequence_list = input_sequence.split()
@@ -280,7 +282,8 @@ for file in range(len(replay_files)):
             # TODO : increase length of sentence
 
             decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
-            if word_idx == MAX_WORD_LENGTH - 1:
+            if word_idx == MAX_WORD_LENGTH - 2:
+                # break at second last so that the last WORD remains as the EOS
                 break
             # print(decoder_target_data[word_idx])
 
