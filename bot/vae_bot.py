@@ -110,6 +110,17 @@ class VaeBot(utils.Gameplay):
             for ship in player.ships:
                 position = self.convert_kaggle2D_to_upperleft2D(size, list(ship.position))
                 input_image[0][position[0] + pad_offset][position[1] + pad_offset][4] = 1 * 10
+
+
+        # mirror
+        if current_player == 1:
+            # right to left
+            input_image = np.flip(input_image, 2)
+        elif current_player == 2:
+            # down to top
+            input_image = np.flip(input_image, 1)
+        elif current_player == 3:
+            input_image = np.flip(input_image, (1, 2))
         return input_image
         # Define sampling models
     def agent(self, obs, config):
@@ -190,6 +201,33 @@ class VaeBot(utils.Gameplay):
         #meta_data = tf.convert_to_tensor(meta_data, dtype=tf.float32)
         #input_image = tf.convert_to_tensor(input_image, dtype=tf.float32)
         result = inference_decoder.attention_decode_sequence(vae, input_image, meta_data)
+        # convert to new location
+        for key, value in result.items():
+            if current_player == 1:
+                if value == 'WEST':
+                    value = 'EAST'
+                elif value == 'EAST':
+                    value = 'WEST'
+                result.pop(key)
+                result[self.switch_left_right(size, key)] = value
+            elif current_player == 2:
+                if value == 'NORTH':
+                    value = 'SOUTH'
+                elif value == 'SOUTH':
+                    value = 'NORTH'
+                result.pop(key)
+                result[self.switch_up_down(size, key)] = value
+            elif current_player == 3:
+                if value == 'NORTH':
+                    value = 'SOUTH'
+                elif value == 'SOUTH':
+                    value = 'NORTH'
+                elif value == 'WEST':
+                    value = 'EAST'
+                elif value == 'EAST':
+                    value = 'WEST'
+                result.pop(key)
+                result[self.switch_corner(size, key)] = value
         print("decoded actions ", result)
         # Assign actions to shipyard or ships with exact location matching
         actions = {}

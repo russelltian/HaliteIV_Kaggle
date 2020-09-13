@@ -111,6 +111,19 @@ class Gameplay(object):
         # self.get_halite()
         # self.normalize()
 
+    def switch_left_right(self, size: int, pos: int):
+        mod = pos // size
+        col = pos % size
+        return mod * size + size - col - 1
+
+    def switch_up_down(self, size: int, pos: int):
+        row = pos // size
+        col = pos % size
+        new_row = size - row - 1
+        return new_row * size + col
+    def switch_corner(self, size: int, pos: int):
+        return size ** 2 - pos - 1
+
     def convert_kaggle1D_to_upperleft2D(self, size: int, pos: int):
         """
          convert 1D position starting from top left of matrix to (row, col) originated at top left of matrix
