@@ -7,7 +7,7 @@ import os
 from tensorflow.python.keras.layers import Dense
 import time
 from train import utils
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, Manager
 
 # training_datasets = []
 vocab_size = 450
@@ -16,7 +16,7 @@ units = 512
 embedding_dim = 256
 FEATURE_MAP_DIMENSION = 5 # TRAINING INPUT dimension
 inference_decoder = utils.Inference(board_size=21)
-BATCH_SIZE = 100
+BATCH_SIZE = 200
 DATASET_SIZE = 400
 METADATA_DIM = 3 # my halite amount, turns left, most leading opponent halite amount
 
@@ -24,22 +24,25 @@ METADATA_DIM = 3 # my halite amount, turns left, most leading opponent halite am
 """
     Data Extraction
 """
-PATH = 'train/top_replay/'
-
+PATH = 'train/top_replay'
+manager = Manager()
 replay_files = []
 # r=root, d=directories, f = files
 for r, d, f in os.walk(PATH):
     for file in f:
         if '.json' in file:
             replay_files.append(os.path.join(r, file))
-for f in replay_files:
-    print(f)
+print('has total training file of ', len(replay_files))
 
 
-def load_raw_data(path):
+def load_raw_data(path, training_datasets):
     # for i, path in enumerate(replay_files):
-    game = utils.HaliteV2(path)
-    print("loading file from ", path)
+    try:
+      game = utils.HaliteV2(path)
+    except Exception as e:
+      print(e)
+      return
+    #print("loading file from ", path)
     if game.game_play_list is not None:
         """
         Five features as training input:
@@ -242,14 +245,23 @@ vae.compile(optimizer=keras.optimizers.Adam(lr=0.004))
 #     total_loss = 0
 # for batch in range(1):
 total_file = len(replay_files)
-LIMIT_PER_TRAIN = 2
+LIMIT_PER_TRAIN = 10
 current_file = 0
+
 while current_file + LIMIT_PER_TRAIN < total_file:
-    training_datasets = []
+    print("at current file: ", current_file)
+    training_datasets = Manager().list()
+    process_list = []
+    p = None
     for i in range(current_file, current_file+LIMIT_PER_TRAIN):
-        load_raw_data(replay_files[i])
+        p = Process(target=load_raw_data, args=(replay_files[i], training_datasets))
+        p.start()
+        process_list.append(p)
+    for p in process_list:
+        p.join()
+    print(len(training_datasets))
     current_file += LIMIT_PER_TRAIN
-    for file in range(LIMIT_PER_TRAIN):
+    for file in range(len(training_datasets)):
         train_x = np.empty((BATCH_SIZE, 32, 32, 5))
         train_y_2 = np.empty((BATCH_SIZE, MAX_WORD_LENGTH))
         train_x_meta = np.empty(shape=(BATCH_SIZE, METADATA_DIM))
@@ -296,7 +308,12 @@ while current_file + LIMIT_PER_TRAIN < total_file:
 
             train_y_2[idx ] = decoder_target_data
 
-        vae.fit([train_x, train_x_meta, train_y_2], epochs=3, verbose=2, batch_size=BATCH_SIZE)
+        vae.fit([train_x, train_x_meta, train_y_2], epochs=10, verbose=2, batch_size=BATCH_SIZE)
+        if current_file % 200 == 0:
+          dirPath = "" + str(current_file)
+          print("store model ")
+          tf.saved_model.save(vae, dirPath)
+
 
 
 
@@ -306,5 +323,6 @@ while current_file + LIMIT_PER_TRAIN < total_file:
 #                                     total_loss))
 print("saving model")
 tf.saved_model.save(vae, 'bot/vae_attention')
+tf.saved_model.save(vae, 'drive/My Drive/model')
 
 print("finished training")
