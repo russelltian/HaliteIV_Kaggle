@@ -24,7 +24,7 @@ METADATA_DIM = 4 # my halite amount, current turn, most leading opponent halite 
 """
     Data Extraction
 """
-PATH = 'train/top_replay'
+PATH = 'train/test_replay'
 manager = Manager()
 replay_files = []
 # r=root, d=directories, f = files
@@ -285,11 +285,8 @@ while current_file + LIMIT_PER_TRAIN < total_file:
 
 
             # convert sequence to vector
-            decoder_input_data = np.zeros(
-                (MAX_WORD_LENGTH),
-                dtype=np.float32) # 1, 50
-            decoder_target_data = np.zeros(
-                (MAX_WORD_LENGTH),
+            decoder_target_data = np.full(
+                (MAX_WORD_LENGTH), 449,  # 449 is the ")" EOS symbol
                 dtype=np.float32)
 
             input_sequence_list = input_sequence.split()
@@ -305,7 +302,7 @@ while current_file + LIMIT_PER_TRAIN < total_file:
                 # TODO : increase length of sentence
 
                 decoder_target_data[word_idx] = inference_decoder.word_to_index_mapping[output_word]
-                if word_idx == MAX_WORD_LENGTH - 1:
+                if word_idx == MAX_WORD_LENGTH - 2:
                     break
                 # print(decoder_target_data[word_idx])
 
